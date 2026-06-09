@@ -19,14 +19,14 @@
 // ==========================================
 // 2. Definisi Pin pada ESP32
 // ==========================================
-const int PIN_PIR = 13;   // Hubungkan ke pin OUT pada Sensor PIR
-const int PIN_RELAY = 12; // Hubungkan ke pin IN pada Modul Relay
+const int PIN_PIR = 14;   // SEKARANG: Hubungkan ke pin OUT pada Sensor PIR
+const int PIN_RELAY = 27; // SEKARANG: Hubungkan ke pin IN pada Modul Relay
 
 // ==========================================
 // 3. Parameter Kalkulasi Emisi (Sesuai Jurnal)
 // ==========================================
-const float DAYA_LAMPU_WATT = 10.0; // Simulasi beban lampu 10 Watt
-const float FAKTOR_EMISI_GRID = 0.82; // Faktor konversi emisi jaringan (tCO2/MWh setara kg/kWh)
+const float DAYA_LAMPU_WATT = 10.0; // Simulasi beban daya lampu jalan mini
+const float FAKTOR_EMISI_GRID = 0.85; // Faktor konversi emisi jaringan (tCO2/MWh setara kg/kWh)
 
 // Variabel Global
 unsigned long waktuMulaiMati = 0;
@@ -50,7 +50,7 @@ void setup() {
   
   // Kondisi awal: Matikan lampu
   digitalWrite(PIN_RELAY, HIGH); 
-  Serial.println("Sistem Otomatisasi Lampu Ruangan eCO2 Siap!");
+  Serial.println("Sistem Otomatisasi Lampu Jalan eCO2 (Pin Baru) Siap!");
 
   // Koneksi ke WiFi
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
@@ -92,7 +92,7 @@ void loop() {
     digitalWrite(PIN_RELAY, LOW); 
     
     if (statusLampuSebelumnya == false) {
-      Serial.println("[STATUS] Ada Aktivitas! Lampu Ruangan Menyala.");
+      Serial.println("[STATUS] Objek Terdeteksi! Lampu Jalan Menyala.");
       statusLampuSebelumnya = true;
       waktuMulaiMati = 0; // Reset timer karena sedang tidak berhemat
       
@@ -106,7 +106,7 @@ void loop() {
     digitalWrite(PIN_RELAY, HIGH);
     
     if (statusLampuSebelumnya == true) {
-      Serial.println("[STATUS] Ruangan Kosong. Lampu Dimatikan Otomatis.");
+      Serial.println("[STATUS] Jalan Sepi. Lampu Dimatikan Otomatis.");
       statusLampuSebelumnya = false;
       waktuMulaiMati = millis(); // Mulai hitung durasi penghematan
       
