@@ -1,10 +1,7 @@
 #include <WiFi.h>
-#include <Firebase_ESP_Client.h>
-
-// Provide the token generation process info.
-#include "addons/TokenHelper.h"
-// Provide the RTDB payload printing info and other helper functions.
-#include "addons/RTDBHelper.h"
+#include <WiFiClientSecure.h>
+#define ENABLE_DATABASE
+#include <FirebaseClient.h>
 
 // ==========================================
 // 1. Kredensial WiFi & Firebase
@@ -35,11 +32,13 @@ float totalCO2Dicegah_mg = 0;
 bool statusLampuSebelumnya = false;
 unsigned long lastUpdateFirebase = 0;
 
-// Objek Firebase
-FirebaseData fbdo;
-FirebaseAuth auth;
-FirebaseConfig config;
-bool signupOK = false;
+// Objek FirebaseClient (Modern API untuk ESP32 Core v3.x)
+NoAuth noAuth;
+FirebaseApp app;
+WiFiClientSecure ssl_client;
+using AsyncClient = AsyncClientClass;
+AsyncClient async_client(ssl_client);
+RealtimeDatabase Database;
 
 void setup() {
   Serial.begin(115200);
@@ -63,26 +62,23 @@ void setup() {
   Serial.print("Terhubung! IP Address: ");
   Serial.println(WiFi.localIP());
 
-  // Konfigurasi Firebase
-  config.api_key = API_KEY;
-  config.database_url = DATABASE_URL;
+  // Setup SSL untuk ESP32 Core v3
+  ssl_client.setInsecure();
+  ssl_client.setConnectionTimeout(1000);
+  ssl_client.setHandshakeTimeout(5);
 
-  // Sign up anonim 
-  if (Firebase.signUp(&config, &auth, "", "")) {
-    Serial.println("Berhasil terhubung ke Firebase!");
-    signupOK = true;
-  } else {
-    Serial.printf("%s\n", config.signer.signupError.message.c_str());
-  }
-
-  // Assign callback fungsi helper
-  config.token_status_callback = tokenStatusCallback; 
+  // Inisialisasi Firebase App
+  initializeApp(async_client, app, getAuth(noAuth));
+  app.getApp<RealtimeDatabase>(Database);
+  Database.url(DATABASE_URL);
   
-  Firebase.begin(&config, &auth);
-  Firebase.reconnectWiFi(true);
+  Serial.println("Berhasil terhubung ke Firebase!");
 }
 
 void loop() {
+  // Required to maintain connection and process Async queues
+  app.loop(); 
+
   // 1. Membaca data dari Sensor PIR
   int statusPIR = digitalRead(PIN_PIR);
   
@@ -97,8 +93,8 @@ void loop() {
       waktuMulaiMati = 0; // Reset timer karena sedang tidak berhemat
       
       // Update Firebase (Lampu Menyala)
-      if (Firebase.ready() && signupOK) {
-        Firebase.RTDB.setBool(&fbdo, "ruangan_01/status_lampu", true);
+      if (app.ready()) {
+        Database.set<bool>(async_client, "ruangan_01/status_lampu", true);
       }
     }
   } else {
@@ -111,8 +107,8 @@ void loop() {
       waktuMulaiMati = millis(); // Mulai hitung durasi penghematan
       
       // Update Firebase (Lampu Mati)
-      if (Firebase.ready() && signupOK) {
-        Firebase.RTDB.setBool(&fbdo, "ruangan_01/status_lampu", false);
+      if (app.ready()) {
+        Database.set<bool>(async_client, "ruangan_01/status_lampu", false);
       }
     }
     
@@ -124,7 +120,7 @@ void loop() {
       float energiBaru_Wh = DAYA_LAMPU_WATT * durasiMati_jam;
       float energiTotal_Wh = totalEnergiDihemat_Wh + energiBaru_Wh;
       
-      // (Wh / 1000 = kWh) -> kWh * 0.82 kg/kWh * 1,000,000 = mg CO2
+      // (Wh / 1000 = kWh) -> kWh * 0.85 kg/kWh * 1,000,000 = mg CO2
       float co2Total_mg = (energiTotal_Wh / 1000.0) * FAKTOR_EMISI_GRID * 1000000.0;
       
       // Print ke Serial Monitor & Push Firebase tiap 5 detik
@@ -137,10 +133,9 @@ void loop() {
         Serial.print(co2Total_mg, 2);
         Serial.println(" mg");
         
-        if (Firebase.ready() && signupOK) {
-          Firebase.RTDB.setFloat(&fbdo, "ruangan_01/energi_dihemat_wh", energiTotal_Wh);
-          Firebase.RTDB.setFloat(&fbdo, "ruangan_01/co2_dicegah_mg", co2Total_mg);
-          Firebase.RTDB.setTimestamp(&fbdo, "ruangan_01/terakhir_update");
+        if (app.ready()) {
+          Database.set<float>(async_client, "ruangan_01/energi_dihemat_wh", energiTotal_Wh);
+          Database.set<float>(async_client, "ruangan_01/co2_dicegah_mg", co2Total_mg);
         }
         
         // Simpan akumulasi, reset waktu
