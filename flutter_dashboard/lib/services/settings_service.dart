@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class SettingsService {
@@ -8,6 +9,7 @@ class SettingsService {
   static const _keyMotionAlerts = 'motion_alerts';
   static const _keyCo2Report = 'co2_report';
   static const _keyWeeklySummary = 'weekly_summary';
+  static const _keyThemeMode = 'theme_mode';
 
   final SharedPreferences _prefs;
 
@@ -20,6 +22,8 @@ class SettingsService {
   bool get motionAlerts => _prefs.getBool(_keyMotionAlerts) ?? true;
   bool get co2Report => _prefs.getBool(_keyCo2Report) ?? false;
   bool get weeklySummary => _prefs.getBool(_keyWeeklySummary) ?? false;
+  ThemeMode get themeMode => _prefs.getString(_keyThemeMode) == 'dark'
+      ? ThemeMode.dark : ThemeMode.light;
 
   Future<void> setRoomName(String v) => _prefs.setString(_keyRoomName, v);
   Future<void> setLightTimeout(int v) => _prefs.setInt(_keyLightTimeout, v);
@@ -28,6 +32,8 @@ class SettingsService {
   Future<void> setMotionAlerts(bool v) => _prefs.setBool(_keyMotionAlerts, v);
   Future<void> setCo2Report(bool v) => _prefs.setBool(_keyCo2Report, v);
   Future<void> setWeeklySummary(bool v) => _prefs.setBool(_keyWeeklySummary, v);
+  Future<void> setThemeMode(ThemeMode mode) =>
+      _prefs.setString(_keyThemeMode, mode == ThemeMode.dark ? 'dark' : 'light');
 
   Future<bool> getBool(String key, bool defaultValue) async => _prefs.getBool(key) ?? defaultValue;
   Future<double> getDouble(String key, double defaultValue) async => _prefs.getDouble(key) ?? defaultValue;

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'firebase_options.dart';
-import 'theme/app_theme.dart';
 import 'app.dart';
 import 'services/settings_service.dart';
 
@@ -14,10 +13,5 @@ void main() async {
   final prefs = await SharedPreferences.getInstance();
   final settings = SettingsService(prefs);
 
-  runApp(MaterialApp(
-    title: 'Smart Room',
-    theme: AppTheme.light,
-    debugShowCheckedModeBanner: false,
-    home: App(settingsService: settings),
-  ));
+  runApp(App(settingsService: settings));
 }
