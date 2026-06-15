@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
-import '../../../theme/app_colors.dart';
-import '../../../services/settings_service.dart';
+import '../../../theme/context_ext.dart';
+import '../../../services/notification_service.dart';
 
 class NotificationSection extends StatefulWidget {
-  final SettingsService service;
+  final NotificationService notifService;
 
-  const NotificationSection({super.key, required this.service});
+  const NotificationSection({super.key, required this.notifService});
 
   @override
   State<NotificationSection> createState() => _NotificationSectionState();
@@ -18,33 +18,25 @@ class _NotificationSectionState extends State<NotificationSection> {
   @override
   void initState() {
     super.initState();
-    _load();
-  }
-
-  Future<void> _load() async {
-    final s = widget.service;
-    _pushEnabled = await s.getBool('push_notif', true);
-    _localEnabled = await s.getBool('local_notif', true);
-    if (mounted) setState(() {});
   }
 
   @override
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: context.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.border, width: 0.5),
+        border: Border.all(color: context.border, width: 0.5),
       ),
       child: Column(
         children: [
           _tile('Push notifications', _pushEnabled, (v) async {
-            await widget.service.setBool('push_notif', v);
+            await widget.notifService.setPushEnabled(v);
             setState(() => _pushEnabled = v);
           }),
           const Divider(height: 0.5),
           _tile('Local notifications', _localEnabled, (v) async {
-            await widget.service.setBool('local_notif', v);
+            await widget.notifService.setLocalEnabled(v);
             setState(() => _localEnabled = v);
           }),
         ],
@@ -57,13 +49,13 @@ class _NotificationSectionState extends State<NotificationSection> {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       child: Row(
         children: [
-          Text(label, style: const TextStyle(fontSize: 13, color: AppColors.textPrimary)),
+          Text(label, style: TextStyle(fontSize: 13, color: context.textPrimary)),
           const Spacer(),
           SizedBox(
             height: 28,
               child: Switch.adaptive(
               value: value,
-              activeTrackColor: AppColors.primary,
+              activeTrackColor: context.primary,
               onChanged: onChanged,
             ),
           ),
