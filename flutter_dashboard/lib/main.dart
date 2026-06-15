@@ -8,13 +8,25 @@ import 'services/notification_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+    debugPrint('Firebase initialized successfully');
+  } catch (e) {
+    debugPrint('Firebase initialization failed: $e');
+  }
+
   final prefs = await SharedPreferences.getInstance();
   final settings = SettingsService(prefs);
   final notif = NotificationService();
-  await notif.init(settings);
+
+  try {
+    await notif.init(settings);
+    debugPrint('Notification service initialized');
+  } catch (e) {
+    debugPrint('Notification service initialization failed: $e');
+  }
 
   runApp(App(settingsService: settings, notificationService: notif));
 }

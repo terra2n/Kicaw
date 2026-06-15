@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../../theme/app_colors.dart';
+import '../../../theme/context_ext.dart';
 import '../../../models/room_status.dart';
 import '../../../widgets/status_chip.dart';
 
@@ -12,8 +12,8 @@ class StatusHeroCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final occupied = status.isOccupied;
-    final bgColor = occupied ? AppColors.statusOccupied : AppColors.statusEmpty;
-    final iconColor = occupied ? AppColors.amber : AppColors.textTertiary;
+    final bgColor = occupied ? context.statusOccupied : context.statusEmpty;
+    final iconColor = occupied ? Colors.amber : context.textTertiary;
     final statusText = occupied ? 'Occupied' : 'Empty';
     final subText = occupied ? 'Radar detecting presence' : 'No motion detected';
     final icon = occupied ? Icons.people_outline : Icons.night_shelter_outlined;
@@ -24,7 +24,7 @@ class StatusHeroCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: bgColor,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.border, width: 0.5),
+        border: Border.all(color: context.border, width: 0.5),
       ),
       child: Column(
         children: [
@@ -34,13 +34,13 @@ class StatusHeroCard extends StatelessWidget {
             statusText,
             style: TextStyle(
               fontSize: 20, fontWeight: FontWeight.w600,
-              color: occupied ? AppColors.textPrimary : AppColors.textSecondary,
+              color: occupied ? context.textPrimary : context.textSecondary,
             ),
           ),
           const SizedBox(height: 4),
           Text(
             subText,
-            style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
+            style: TextStyle(fontSize: 13, color: context.textSecondary),
           ),
           const SizedBox(height: 16),
           Row(
@@ -51,7 +51,7 @@ class StatusHeroCard extends StatelessWidget {
                 const SizedBox(width: 12),
                 Text(
                   '${lastChange!.hour.toString().padLeft(2, '0')}:${lastChange!.minute.toString().padLeft(2, '0')}',
-                  style: const TextStyle(fontSize: 11, color: AppColors.textTertiary),
+                  style: TextStyle(fontSize: 11, color: context.textTertiary),
                 ),
               ],
             ],

@@ -46,6 +46,9 @@ class NotificationService {
   bool _pushEnabled = true;
   bool _wasOccupied = false;
 
+  bool get localEnabled => _localEnabled;
+  bool get pushEnabled => _pushEnabled;
+
   Future<void> init(SettingsService settings) async {
     _settings = settings;
     _localEnabled = await settings.getBool('local_notif', true);
@@ -69,12 +72,16 @@ class NotificationService {
 
     if (perm.authorizationStatus == AuthorizationStatus.authorized ||
         perm.authorizationStatus == AuthorizationStatus.provisional) {
-      final token = await _fcm.getToken();
-      if (token != null) {
-        await _firestore
-            .collection('fcm_tokens')
-            .doc(token.hashCode.toString())
-            .set({'token': token, 'updated_at': DateTime.now().toIso8601String()});
+      try {
+        final token = await _fcm.getToken().timeout(const Duration(seconds: 10));
+        if (token != null) {
+          await _firestore
+              .collection('fcm_tokens')
+              .doc(token.hashCode.toString())
+              .set({'token': token, 'updated_at': DateTime.now().toIso8601String()});
+        }
+      } catch (e) {
+        print('Error getting FCM token: $e');
       }
     }
 

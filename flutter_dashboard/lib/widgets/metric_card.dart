@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../theme/app_colors.dart';
+import '../theme/context_ext.dart';
 
 class MetricCard extends StatelessWidget {
   final IconData icon;
@@ -22,9 +22,9 @@ class MetricCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: context.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.border, width: 0.5),
+        border: Border.all(color: context.border, width: 0.5),
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -34,27 +34,27 @@ class MetricCard extends StatelessWidget {
           FittedBox(
             child: Text(
               '$value ',
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.w600,
-                color: AppColors.textPrimary,
+                color: context.textPrimary,
               ),
             ),
           ),
           Text(
             unit,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 12,
-              color: AppColors.textSecondary,
+              color: context.textSecondary,
             ),
           ),
           const SizedBox(height: 4),
           Text(
             label,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w500,
-              color: AppColors.textSecondary,
+              color: context.textSecondary,
             ),
           ),
         ],

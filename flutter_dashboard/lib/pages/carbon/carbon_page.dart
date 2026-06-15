@@ -46,19 +46,19 @@ class _CarbonPageState extends State<CarbonPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const SizedBox(height: 8),
-                  FadeSlide(index: 0, child: const SectionHeader(title: 'THIS MONTH')),
+                  const FadeSlide(index: 0, child: SectionHeader(title: 'THIS MONTH')),
                   FadeSlide(index: 1, child: hasError
                     ? const ErrorBanner(message: 'Carbon data unavailable')
                     : !hasData
                       ? const ShimmerBlock(height: 140)
                       : TotalCo2Hero(co2Mg: totalCo2Mg)),
                   const SizedBox(height: 24),
-                  FadeSlide(index: 2, child: const SectionHeader(title: 'REAL-WORLD EQUIVALENTS')),
+                  const FadeSlide(index: 2, child: SectionHeader(title: 'REAL-WORLD EQUIVALENTS')),
                   FadeSlide(index: 3, child: hasError
                     ? const ErrorBanner(message: 'Equivalents unavailable')
                     : RealWorldEquivalents(co2Grams: totalCo2Mg / 1000)),
                   const SizedBox(height: 24),
-                  FadeSlide(index: 4, child: const SectionHeader(title: 'CO\u2082 PER DAY — LAST 30 DAYS')),
+                  const FadeSlide(index: 4, child: SectionHeader(title: 'CO\u2082 PER DAY — LAST 30 DAYS')),
                   FadeSlide(index: 5, child: hasError
                     ? const ErrorBanner(message: 'Chart unavailable')
                     : !hasData
@@ -67,13 +67,13 @@ class _CarbonPageState extends State<CarbonPage> {
                         ? const EmptyState(icon: Icons.eco, title: 'No CO\u2082 data yet')
                         : DailyCo2Chart(co2MgValues: co2Values)),
                   const SizedBox(height: 24),
-                  FadeSlide(index: 6, child: const SectionHeader(title: 'DETAILS')),
+                  const FadeSlide(index: 6, child: SectionHeader(title: 'DETAILS')),
                   FadeSlide(index: 7, child: hasError
                     ? const ErrorBanner(message: 'Details unavailable')
                     : Column(children: [
                         EmissionInfo(label: 'Average daily', value: '${avgDailyMg.toStringAsFixed(1)} mg'),
                         const SizedBox(height: 8),
-                        EmissionInfo(label: 'Grid factor', value: '850 g CO\u2082/kWh'),
+                        const EmissionInfo(label: 'Grid factor', value: '850 g CO\u2082/kWh'),
                         const SizedBox(height: 8),
                         EmissionInfo(label: 'Total this month', value: '${(totalCo2Mg / 1000).toStringAsFixed(2)} g'),
                         const SizedBox(height: 8),

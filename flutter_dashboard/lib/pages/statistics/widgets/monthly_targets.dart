@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../../theme/app_colors.dart';
+import '../../../theme/context_ext.dart';
 
 class MonthlyTargets extends StatelessWidget {
   final double co2Percent;
@@ -12,28 +12,28 @@ class MonthlyTargets extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: context.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.border, width: 0.5),
+        border: Border.all(color: context.border, width: 0.5),
       ),
       child: Column(
         children: [
-          _bar('CO\u2082 prevented', co2Percent, AppColors.primary),
+          _bar(context, 'CO\u2082 prevented', co2Percent, context.primary),
           const SizedBox(height: 20),
-          _bar('Energy saved', energyPercent, AppColors.blue),
+          _bar(context, 'Energy saved', energyPercent, Colors.blue),
         ],
       ),
     );
   }
 
-  Widget _bar(String label, double percent, Color color) {
+  Widget _bar(BuildContext context, String label, double percent, Color color) {
     final clamped = percent.clamp(0, 100);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
-            Text(label, style: const TextStyle(fontSize: 13, color: AppColors.textPrimary)),
+            Text(label, style: TextStyle(fontSize: 13, color: context.textPrimary)),
             const Spacer(),
             Text('${clamped.toStringAsFixed(0)}%', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: color)),
           ],
@@ -43,7 +43,7 @@ class MonthlyTargets extends StatelessWidget {
           borderRadius: BorderRadius.circular(3),
           child: LinearProgressIndicator(
             value: clamped / 100,
-            backgroundColor: AppColors.trackBg,
+            backgroundColor: context.trackBg,
             valueColor: AlwaysStoppedAnimation<Color>(color),
             minHeight: 5,
           ),

@@ -91,17 +91,17 @@ class _HomePageState extends State<HomePage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const SizedBox(height: 8),
-              FadeSlide(index: 0, child: const SectionHeader(title: 'ROOM STATUS')),
+              const FadeSlide(index: 0, child: SectionHeader(title: 'ROOM STATUS')),
               FadeSlide(index: 1, child: StreamBuilder<RoomStatus>(
                 stream: _rt.statusStream,
                 builder: (context, snap) {
-                  if (snap.hasError) return ErrorBanner(message: 'Failed to get room status', onRetry: _onRefresh);
+                  if (snap.hasError) return const ErrorBanner(message: 'Failed to get room status', onRetry: null);
                   if (!snap.hasData) return const ShimmerBlock(height: 160);
                   return StatusHeroCard(status: snap.data!);
                 },
               )),
               const SizedBox(height: 24),
-              FadeSlide(index: 2, child: const SectionHeader(title: 'ENERGY AUDIT — TODAY')),
+              const FadeSlide(index: 2, child: SectionHeader(title: 'ENERGY AUDIT — TODAY')),
               FadeSlide(index: 3, child: StreamBuilder<RoomStatus>(
                 stream: _rt.statusStream,
                 builder: (context, snap) {
@@ -116,7 +116,7 @@ class _HomePageState extends State<HomePage> {
                 },
               )),
               const SizedBox(height: 24),
-              FadeSlide(index: 4, child: const SectionHeader(title: 'LAST 7 DAYS')),
+              const FadeSlide(index: 4, child: SectionHeader(title: 'LAST 7 DAYS')),
               FadeSlide(index: 5, child: StreamBuilder<List<double>>(
                 stream: _fs.getDailyLogs(7).map((logs) {
                   return logs.reversed.map((l) => l.whSaved).toList();
@@ -129,7 +129,7 @@ class _HomePageState extends State<HomePage> {
                 },
               )),
               const SizedBox(height: 24),
-              FadeSlide(index: 6, child: const SectionHeader(title: 'RECENT ACTIVITY')),
+              const FadeSlide(index: 6, child: SectionHeader(title: 'RECENT ACTIVITY')),
               FadeSlide(index: 7, child: StreamBuilder<List<ActivityItem>>(
                 stream: _fs.getRecentActivity(5).map((logs) {
                   return logs.map((l) => ActivityItem(

@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../../theme/app_colors.dart';
+import '../../../theme/context_ext.dart';
 import '../../../services/settings_service.dart';
 
 class AutomationSection extends StatefulWidget {
@@ -42,16 +42,16 @@ class _AutomationSectionState extends State<AutomationSection> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text('Auto-off timeout', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                Text('Auto-off timeout', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: context.textPrimary)),
                 const SizedBox(height: 4),
-                Text('${val.toInt()} seconds', style: const TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+                Text('${val.toInt()} seconds', style: TextStyle(fontSize: 13, color: context.textSecondary)),
                 Slider(
                   value: val,
                   min: 5,
                   max: 300,
                   divisions: 59,
-                  activeColor: AppColors.primary,
-                  inactiveColor: AppColors.trackBg,
+                  activeColor: context.primary,
+                  inactiveColor: context.trackBg,
                   label: '${val.toInt()} s',
                   onChanged: (v) => setSheetState(() => val = v),
                 ),
@@ -60,8 +60,8 @@ class _AutomationSectionState extends State<AutomationSection> {
                   width: double.infinity,
                   child: ElevatedButton(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primary,
-                      foregroundColor: AppColors.surface,
+                      backgroundColor: context.primary,
+                      foregroundColor: Colors.white,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                     ),
                     onPressed: () => Navigator.pop(ctx, val),
@@ -84,18 +84,18 @@ class _AutomationSectionState extends State<AutomationSection> {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: context.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.border, width: 0.5),
+        border: Border.all(color: context.border, width: 0.5),
       ),
       child: Column(
         children: [
-          _tile('Auto mode', _autoMode, (v) async {
+          _tile(context, 'Auto mode', _autoMode, (v) async {
             await widget.service.setBool('auto_mode', v);
             setState(() => _autoMode = v);
           }),
           const Divider(height: 0.5),
-          _tile('Away mode', _awayMode, (v) async {
+          _tile(context, 'Away mode', _awayMode, (v) async {
             await widget.service.setBool('away_mode', v);
             setState(() => _awayMode = v);
           }),
@@ -106,11 +106,11 @@ class _AutomationSectionState extends State<AutomationSection> {
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
               child: Row(
                 children: [
-                  const Text('Auto-off timeout', style: TextStyle(fontSize: 13, color: AppColors.textPrimary)),
+                  Text('Auto-off timeout', style: TextStyle(fontSize: 13, color: context.textPrimary)),
                   const Spacer(),
-                  Text('${_autoOff.toInt()}s', style: const TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+                  Text('${_autoOff.toInt()}s', style: TextStyle(fontSize: 13, color: context.textSecondary)),
                   const SizedBox(width: 4),
-                  const Icon(Icons.chevron_right, size: 18, color: AppColors.textTertiary),
+                  Icon(Icons.chevron_right, size: 18, color: context.textTertiary),
                 ],
               ),
             ),
@@ -120,18 +120,18 @@ class _AutomationSectionState extends State<AutomationSection> {
     );
   }
 
-  Widget _tile(String label, bool value, ValueChanged<bool> onChanged) {
+  Widget _tile(BuildContext context, String label, bool value, ValueChanged<bool> onChanged) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       child: Row(
         children: [
-          Text(label, style: const TextStyle(fontSize: 13, color: AppColors.textPrimary)),
+          Text(label, style: TextStyle(fontSize: 13, color: context.textPrimary)),
           const Spacer(),
           SizedBox(
             height: 28,
               child: Switch.adaptive(
               value: value,
-              activeTrackColor: AppColors.primary,
+              activeTrackColor: context.primary,
               onChanged: onChanged,
             ),
           ),

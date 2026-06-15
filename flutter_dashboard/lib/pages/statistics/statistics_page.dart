@@ -42,34 +42,34 @@ class _StatisticsPageState extends State<StatisticsPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const SizedBox(height: 8),
-                  FadeSlide(index: 0, child: const SectionHeader(title: 'MONTHLY TARGETS')),
+                  const FadeSlide(index: 0, child: SectionHeader(title: 'MONTHLY TARGETS')),
                   FadeSlide(index: 1, child: hasError
                     ? const ErrorBanner(message: 'Targets unavailable')
                     : const MonthlyTargets(co2Percent: 50, energyPercent: 30)),
                   const SizedBox(height: 24),
-                  FadeSlide(index: 2, child: const SectionHeader(title: 'CONSUMPTION TREND — 30 DAYS')),
+                  const FadeSlide(index: 2, child: SectionHeader(title: 'CONSUMPTION TREND — 30 DAYS')),
                   FadeSlide(index: 3, child: hasError
                     ? const ErrorBanner(message: 'Trend data unavailable')
                     : !hasData
                       ? const ShimmerBlock(height: 120)
                       : TrendLineChart(
                           values: dailyVals.isNotEmpty ? dailyVals
-                            : [0.02, 0.015, 0.03, 0.01, 0.025, 0.018, 0.022, 0.019, 0.027, 0.014])),
+                            : const [0.02, 0.015, 0.03, 0.01, 0.025, 0.018, 0.022, 0.019, 0.027, 0.014])),
                   const SizedBox(height: 24),
-                  FadeSlide(index: 4, child: const SectionHeader(title: 'ALL-TIME')),
+                  const FadeSlide(index: 4, child: SectionHeader(title: 'ALL-TIME')),
                   FadeSlide(index: 5, child: hasError
                     ? const ErrorBanner(message: 'Summary unavailable')
                     : const AlltimeSummary(sessions: 24, hoursSaved: 3.2, co2Grams: 1630)),
                   const SizedBox(height: 24),
-                  FadeSlide(index: 6, child: const SectionHeader(title: 'BEST DAY')),
+                  const FadeSlide(index: 6, child: SectionHeader(title: 'BEST DAY')),
                   FadeSlide(index: 7, child: hasError
                     ? const ErrorBanner(message: 'Best day data unavailable')
                     : const BestDayCard(date: 'Jun 12, 2026', subtitle: '0.045 Wh saved \u2014 38.25 mg CO\u2082')),
                   const SizedBox(height: 24),
-                  FadeSlide(index: 8, child: const SectionHeader(title: 'EMISSION FACTOR')),
+                  const FadeSlide(index: 8, child: SectionHeader(title: 'EMISSION FACTOR')),
                   FadeSlide(index: 9, child: hasError
                     ? const ErrorBanner(message: 'Emission data unavailable')
-                    : Column(children: const [
+                    : const Column(children: [
                         EmissionFactorTile(label: 'Grid intensity', value: '850 g CO\u2082/kWh'),
                         SizedBox(height: 8),
                         EmissionFactorTile(label: 'Source', value: 'Indonesia (IPCC 2026)'),

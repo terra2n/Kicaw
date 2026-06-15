@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../../theme/app_colors.dart';
+import '../../../theme/context_ext.dart';
 
 class TotalCo2Hero extends StatelessWidget {
   final double co2Mg;
@@ -13,22 +13,22 @@ class TotalCo2Hero extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(28),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: context.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.border, width: 0.5),
+        border: Border.all(color: context.border, width: 0.5),
       ),
       child: Column(
         children: [
-          const Icon(Icons.cloud_outlined, size: 36, color: AppColors.textTertiary),
+          Icon(Icons.cloud_outlined, size: 36, color: context.textTertiary),
           const SizedBox(height: 12),
           Text(
             '${g.toStringAsFixed(2)} g',
-            style: const TextStyle(fontSize: 36, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+            style: TextStyle(fontSize: 36, fontWeight: FontWeight.w700, color: context.textPrimary),
           ),
           const SizedBox(height: 4),
-          const Text(
+          Text(
             'CO\u2082 prevented this month',
-            style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+            style: TextStyle(fontSize: 13, color: context.textSecondary),
           ),
         ],
       ),

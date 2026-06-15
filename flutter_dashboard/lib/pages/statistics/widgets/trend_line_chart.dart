@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
-import '../../../theme/app_colors.dart';
+import '../../../theme/context_ext.dart';
 
 class TrendLineChart extends StatelessWidget {
   final List<double> values;
@@ -15,9 +15,9 @@ class TrendLineChart extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(8, 16, 8, 8),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: context.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.border, width: 0.5),
+        border: Border.all(color: context.border, width: 0.5),
       ),
       child: SizedBox(
         height: 100,
@@ -32,12 +32,12 @@ class TrendLineChart extends StatelessWidget {
             lineBarsData: [
               LineChartBarData(
                 spots: List.generate(values.length, (i) => FlSpot(i.toDouble(), values[i].clamp(0.001, double.infinity))),
-                color: AppColors.primary,
+                color: context.primary,
                 barWidth: 2,
                 dotData: const FlDotData(show: false),
                 belowBarData: BarAreaData(
                   show: true,
-                  color: AppColors.primaryLight.withValues(alpha: 0.4),
+                  color: context.primaryLight.withValues(alpha: 0.4),
                 ),
                 isCurved: true,
                 curveSmoothness: 0.3,

@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../../theme/app_colors.dart';
+import '../../../theme/context_ext.dart';
 
 class ActivityItem {
   final String event;
@@ -26,15 +26,15 @@ class RecentActivity extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: context.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.border, width: 0.5),
+        border: Border.all(color: context.border, width: 0.5),
       ),
       child: Column(
         children: List.generate(items.length, (i) {
           final item = items[i];
           final isLightOn = item.type == 'on';
-          final dotColor = isLightOn ? AppColors.dotGreen : AppColors.dotGray;
+          final dotColor = isLightOn ? context.dotGreen : context.dotGray;
           return Column(
             children: [
               if (i > 0) const Divider(height: 0.5),
@@ -53,19 +53,19 @@ class RecentActivity extends StatelessWidget {
                         children: [
                           Text(
                             item.event,
-                            style: const TextStyle(fontSize: 13, color: AppColors.textPrimary),
+                            style: TextStyle(fontSize: 13, color: context.textPrimary),
                           ),
                           if (item.whSaved > 0)
                             Text(
                               'saved ${item.whSaved.toStringAsFixed(3)} Wh · ${item.co2Mg.toStringAsFixed(1)} mg CO\u2082',
-                              style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                              style: TextStyle(fontSize: 11, color: context.textSecondary),
                             ),
                         ],
                       ),
                     ),
                     Text(
                       '${item.timestamp.hour.toString().padLeft(2, '0')}:${item.timestamp.minute.toString().padLeft(2, '0')}',
-                      style: const TextStyle(fontSize: 9, color: AppColors.textTertiary),
+                      style: TextStyle(fontSize: 9, color: context.textTertiary),
                     ),
                   ],
                 ),

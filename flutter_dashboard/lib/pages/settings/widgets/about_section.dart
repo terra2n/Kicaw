@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../../theme/app_colors.dart';
+import '../../../theme/context_ext.dart';
 
 class AboutSection extends StatelessWidget {
   const AboutSection({super.key});
@@ -8,23 +8,23 @@ class AboutSection extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: context.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.border, width: 0.5),
+        border: Border.all(color: context.border, width: 0.5),
       ),
       child: Column(
         children: [
-          _tile('Version', '1.0.0'),
+          _tile(context, 'Version', '1.0.0'),
           const Divider(height: 0.5),
-          _tile('Platform', 'Flutter'),
+          _tile(context, 'Platform', 'Flutter'),
           const Divider(height: 0.5),
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             child: Row(
               children: [
-                Text('Team', style: TextStyle(fontSize: 13, color: AppColors.textPrimary)),
-                Spacer(),
-                Text('KICAW', style: TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+                Text('Team', style: TextStyle(fontSize: 13, color: context.textPrimary)),
+                const Spacer(),
+                Text('KICAW', style: TextStyle(fontSize: 13, color: context.textSecondary)),
               ],
             ),
           ),
@@ -33,14 +33,14 @@ class AboutSection extends StatelessWidget {
     );
   }
 
-  Widget _tile(String label, String value) {
+  Widget _tile(BuildContext context, String label, String value) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       child: Row(
         children: [
-          Text(label, style: const TextStyle(fontSize: 13, color: AppColors.textPrimary)),
+          Text(label, style: TextStyle(fontSize: 13, color: context.textPrimary)),
           const Spacer(),
-          Text(value, style: const TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+          Text(value, style: TextStyle(fontSize: 13, color: context.textSecondary)),
         ],
       ),
     );

@@ -19,6 +19,21 @@ subprojects {
     project.evaluationDependsOn(":app")
 }
 
+subprojects {
+    val setCompileSdk = {
+        if (project.extensions.findByName("android") != null) {
+            configure<com.android.build.gradle.BaseExtension> {
+                compileSdkVersion(36)
+            }
+        }
+    }
+    if (project.state.executed) {
+        setCompileSdk()
+    } else {
+        project.afterEvaluate { setCompileSdk() }
+    }
+}
+
 tasks.register<Delete>("clean") {
     delete(rootProject.layout.buildDirectory)
 }

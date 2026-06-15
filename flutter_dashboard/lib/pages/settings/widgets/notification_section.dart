@@ -12,12 +12,14 @@ class NotificationSection extends StatefulWidget {
 }
 
 class _NotificationSectionState extends State<NotificationSection> {
-  bool _pushEnabled = true;
-  bool _localEnabled = true;
+  late bool _pushEnabled;
+  late bool _localEnabled;
 
   @override
   void initState() {
     super.initState();
+    _pushEnabled = widget.notifService.pushEnabled;
+    _localEnabled = widget.notifService.localEnabled;
   }
 
   @override

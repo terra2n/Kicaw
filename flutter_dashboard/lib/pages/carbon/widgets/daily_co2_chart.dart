@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
-import '../../../theme/app_colors.dart';
+import '../../../theme/context_ext.dart';
 
 class DailyCo2Chart extends StatelessWidget {
   final List<double> co2MgValues;
@@ -15,9 +15,9 @@ class DailyCo2Chart extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(8, 16, 8, 8),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: context.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.border, width: 0.5),
+        border: Border.all(color: context.border, width: 0.5),
       ),
       child: SizedBox(
         height: 120,
@@ -33,7 +33,7 @@ class DailyCo2Chart extends StatelessWidget {
               return BarChartGroupData(x: i, barRods: [
                 BarChartRodData(
                   toY: co2MgValues[i].clamp(0.001, double.infinity),
-                  color: AppColors.green,
+                  color: Colors.green,
                   width: 8,
                   borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
                 ),

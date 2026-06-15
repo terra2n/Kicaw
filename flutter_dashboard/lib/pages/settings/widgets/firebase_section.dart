@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../../theme/app_colors.dart';
+import '../../../theme/context_ext.dart';
 import '../../../widgets/status_chip.dart';
 
 class FirebaseSection extends StatelessWidget {
@@ -10,9 +10,9 @@ class FirebaseSection extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: context.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.border, width: 0.5),
+        border: Border.all(color: context.border, width: 0.5),
       ),
       child: Row(
         children: [
@@ -20,9 +20,9 @@ class FirebaseSection extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Firebase Connection', style: TextStyle(fontSize: 13, color: AppColors.textPrimary)),
+                Text('Firebase Connection', style: TextStyle(fontSize: 13, color: context.textPrimary)),
                 const SizedBox(height: 4),
-                const Text('RTDB + Firestore', style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+                Text('RTDB + Firestore', style: TextStyle(fontSize: 11, color: context.textSecondary)),
               ],
             ),
           ),

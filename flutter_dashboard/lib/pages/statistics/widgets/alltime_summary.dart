@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../../theme/app_colors.dart';
+import '../../../theme/context_ext.dart';
 
 class AlltimeSummary extends StatelessWidget {
   final int sessions;
@@ -12,29 +12,29 @@ class AlltimeSummary extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        _box('${sessions}', 'sessions'),
+        _box(context, '$sessions', 'sessions'),
         const SizedBox(width: 12),
-        _box(hoursSaved.toStringAsFixed(1), 'hrs saved'),
+        _box(context, hoursSaved.toStringAsFixed(1), 'hrs saved'),
         const SizedBox(width: 12),
-        _box('${co2Grams.toStringAsFixed(1)} g', 'CO\u2082 cut'),
+        _box(context, '${co2Grams.toStringAsFixed(1)} g', 'CO\u2082 cut'),
       ],
     );
   }
 
-  Widget _box(String value, String label) {
+  Widget _box(BuildContext context, String value, String label) {
     return Expanded(
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 16),
         decoration: BoxDecoration(
-          color: AppColors.surface,
+          color: context.surface,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.border, width: 0.5),
+          border: Border.all(color: context.border, width: 0.5),
         ),
         child: Column(
           children: [
-            Text(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+            Text(value, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: context.textPrimary)),
             const SizedBox(height: 4),
-            Text(label, style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+            Text(label, style: TextStyle(fontSize: 11, color: context.textSecondary)),
           ],
         ),
       ),

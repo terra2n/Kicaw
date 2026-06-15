@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
-import '../../../theme/app_colors.dart';
+import '../../../theme/context_ext.dart';
 
 class WeeklyChart extends StatelessWidget {
   final List<double> values;
@@ -15,9 +15,9 @@ class WeeklyChart extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(8, 16, 8, 8),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: context.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.border, width: 0.5),
+        border: Border.all(color: context.border, width: 0.5),
       ),
       child: SizedBox(
         height: 120,
@@ -39,7 +39,7 @@ class WeeklyChart extends StatelessWidget {
                     if (idx < 0 || idx >= days.length) return const SizedBox();
                     return Padding(
                       padding: const EdgeInsets.only(top: 4),
-                      child: Text(days[idx], style: const TextStyle(fontSize: 9, color: AppColors.textTertiary)),
+                      child: Text(days[idx], style: TextStyle(fontSize: 9, color: context.textTertiary)),
                     );
                   },
                 ),
@@ -51,7 +51,7 @@ class WeeklyChart extends StatelessWidget {
               return BarChartGroupData(x: i, barRods: [
                 BarChartRodData(
                   toY: values[i].clamp(0.001, double.infinity),
-                  color: AppColors.primary,
+                  color: context.primary,
                   width: 8,
                   borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
                 ),
