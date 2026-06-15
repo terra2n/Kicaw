@@ -1,63 +1,62 @@
 import 'package:flutter/material.dart';
-import '../../theme/app_colors.dart';
 import '../../widgets/section_header.dart';
+import '../../services/firestore_service.dart';
+import '../../models/daily_log.dart';
+import 'widgets/total_co2_hero.dart';
+import 'widgets/real_world_equivalents.dart';
+import 'widgets/daily_co2_chart.dart';
+import 'widgets/emission_info.dart';
 
-class CarbonPage extends StatelessWidget {
+class CarbonPage extends StatefulWidget {
   const CarbonPage({super.key});
+
+  @override
+  State<CarbonPage> createState() => _CarbonPageState();
+}
+
+class _CarbonPageState extends State<CarbonPage> {
+  final FirestoreService _fs = FirestoreService();
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Carbon footprint'),
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(4),
-          child: Container(color: AppColors.border, height: 0.5),
-        ),
-      ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(height: 8),
-              const SectionHeader(title: 'TOTAL CO\u2082 PREVENTED'),
-              _placeholder(Icons.eco, 'CO\u2082 Hero Card', 'Coming soon in Patch 3'),
-              const SizedBox(height: 24),
-              const SectionHeader(title: 'REAL-WORLD EQUIVALENTS'),
-              _placeholder(Icons.nature, 'Tree / Car / Phone', 'Coming soon in Patch 3'),
-              const SizedBox(height: 24),
-              const SectionHeader(title: 'DAILY CO\u2082 REDUCTION'),
-              _placeholder(Icons.bar_chart, 'Horizontal Bar Chart', 'Coming soon in Patch 3'),
-              const SizedBox(height: 24),
-              const SectionHeader(title: 'EMISSION INFO'),
-              _placeholder(Icons.info_outline, 'Emission Info', 'Coming soon in Patch 3'),
-              const SizedBox(height: 32),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+      appBar: AppBar(title: const Text('Carbon')),
+      body: StreamBuilder<List<DailyLog>>(
+        stream: _fs.getDailyLogs(30),
+        builder: (context, snap) {
+          final logs = snap.data ?? [];
+          final totalCo2Mg = logs.fold<double>(0, (sum, l) => sum + l.co2Mg);
+          final co2Values = logs.reversed.map((l) => l.co2Mg).toList();
+          final avgDailyMg = logs.isNotEmpty ? totalCo2Mg / logs.length : 0.0;
 
-  Widget _placeholder(IconData icon, String title, String subtitle) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.border, width: 0.5),
-      ),
-      child: Column(
-        children: [
-          Icon(icon, size: 32, color: AppColors.textTertiary),
-          const SizedBox(height: 8),
-          Text(title, style: const TextStyle(fontWeight: FontWeight.w500, color: AppColors.textPrimary)),
-          const SizedBox(height: 4),
-          Text(subtitle, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-        ],
+          return SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 8),
+                const SectionHeader(title: 'THIS MONTH'),
+                TotalCo2Hero(co2Mg: totalCo2Mg),
+                const SizedBox(height: 24),
+                const SectionHeader(title: 'REAL-WORLD EQUIVALENTS'),
+                RealWorldEquivalents(co2Grams: totalCo2Mg / 1000),
+                const SizedBox(height: 24),
+                const SectionHeader(title: 'CO\u2082 PER DAY — LAST 30 DAYS'),
+                DailyCo2Chart(co2MgValues: co2Values.isNotEmpty ? co2Values : [6.8, 5.1, 8.3, 4.2, 7.0]),
+                const SizedBox(height: 24),
+                const SectionHeader(title: 'DETAILS'),
+                EmissionInfo(label: 'Average daily', value: '${avgDailyMg.toStringAsFixed(1)} mg'),
+                const SizedBox(height: 8),
+                EmissionInfo(label: 'Grid factor', value: '850 g CO\u2082/kWh'),
+                const SizedBox(height: 8),
+                EmissionInfo(label: 'Total this month', value: '${(totalCo2Mg / 1000).toStringAsFixed(2)} g'),
+                const SizedBox(height: 8),
+                EmissionInfo(label: 'Lamp avoided', value: '${logs.length} on/off cycles'),
+                const SizedBox(height: 32),
+              ],
+            ),
+          );
+        },
       ),
     );
   }

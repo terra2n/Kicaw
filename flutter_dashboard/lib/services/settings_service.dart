@@ -28,4 +28,9 @@ class SettingsService {
   Future<void> setMotionAlerts(bool v) => _prefs.setBool(_keyMotionAlerts, v);
   Future<void> setCo2Report(bool v) => _prefs.setBool(_keyCo2Report, v);
   Future<void> setWeeklySummary(bool v) => _prefs.setBool(_keyWeeklySummary, v);
+
+  Future<bool> getBool(String key, bool defaultValue) async => _prefs.getBool(key) ?? defaultValue;
+  Future<double> getDouble(String key, double defaultValue) async => _prefs.getDouble(key) ?? defaultValue;
+  Future<void> setBool(String key, bool v) => _prefs.setBool(key, v);
+  Future<void> setDouble(String key, double v) => _prefs.setDouble(key, v);
 }

@@ -5,12 +5,11 @@ import 'pages/statistics/statistics_page.dart';
 import 'pages/carbon/carbon_page.dart';
 import 'pages/settings/settings_page.dart';
 import 'services/settings_service.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 class App extends StatefulWidget {
-  final SettingsService? settingsService;
+  final SettingsService settingsService;
 
-  const App({super.key, this.settingsService});
+  const App({super.key, required this.settingsService});
 
   @override
   State<App> createState() => _AppState();
@@ -19,27 +18,19 @@ class App extends StatefulWidget {
 class _AppState extends State<App> {
   int _currentIndex = 0;
 
-  late final SettingsService _settings;
-  late final List<Widget> _pages;
-
-  @override
-  void initState() {
-    super.initState();
-    _settings = widget.settingsService ?? SettingsService(SharedPreferences.getInstance() as SharedPreferences);
-    _pages = [
-      HomePage(settingsService: _settings),
-      const StatisticsPage(),
-      const CarbonPage(),
-      SettingsPage(settingsService: _settings),
-    ];
-  }
-
   @override
   Widget build(BuildContext context) {
+    final pages = [
+      const HomePage(),
+      const StatisticsPage(),
+      const CarbonPage(),
+      SettingsPage(service: widget.settingsService),
+    ];
+
     return Scaffold(
       body: IndexedStack(
         index: _currentIndex,
-        children: _pages,
+        children: pages,
       ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
