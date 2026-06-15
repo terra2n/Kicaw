@@ -1,17 +1,73 @@
-# Smart Room eCO2
+# Kicaw — Smart Room eCO2
 
-Proyek Tugas Besar: Prototipe Otomatisasi Lampu Ruangan Berbasis ESP32 untuk Memantau Emisi Karbon Secara Jarak Jauh (Referensi: Singh & Dhanekar, 2026).
+[![Flutter CI](https://github.com/terra2n/Kicaw/actions/workflows/flutter_ci.yml/badge.svg)](https://github.com/terra2n/Kicaw/actions/workflows/flutter_ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+
+Prototipe Otomatisasi Lampu Ruangan Berbasis ESP32 untuk Memantau Emisi Karbon Secara Jarak Jauh.
+
+> Referensi: Singh & Dhanekar (2026)
+
+---
+
+## Arsitektur Sistem
+
+```
++-------------+          +------------------+          +------------------+
+|   ESP32     |  WiFi    |  Firebase        |  Stream  |  Flutter         |
+|  + PIR      |--------->|  Realtime DB     |<---------|  Dashboard       |
+|  + Relay    |  HTTPS   |  (Cloud)         |  onValue |  (Mobile/Web)    |
++-------------+          +------------------+          +------------------+
+     |                           |
+     | Sensor PIR mendeteksi     | Data: status_lampu,
+     | gerakan → relay ON/OFF    | energi_dihemat_wh,
+     | Kalkulasi emisi CO2       | co2_dicegah_mg
+```
 
 ## Struktur Repositori
-- `esp32_iot/` - Berisi source code C++ (Arduino) untuk mikrokontroler ESP32, sensor PIR, Relay, dan koneksi Firebase.
-- `flutter_dashboard/` - Berisi source code Flutter App untuk dashboard pemantauan realtime eCO2.
 
-## Panduan Setup
+```
+├── esp32_iot/              # Firmware ESP32 (Arduino C++)
+│   └── esp32_iot.ino       # Source code utama
+├── flutter_dashboard/      # Aplikasi dashboard (Flutter)
+│   └── lib/
+│       ├── main.dart
+│       └── firebase_options.dart
+├── .github/workflows/      # GitHub Actions CI
+├── .gitignore
+├── .gitattributes
+├── LICENSE
+└── README.md
+```
 
-### 1. Firebase Setup
-1. Buat project baru di [Firebase Console](https://console.firebase.google.com/).
-2. Aktifkan **Realtime Database**.
-3. Atur Rules (hanya untuk testing lokal):
+## Kebutuhan Hardware
+
+| Komponen | Spesifikasi | Keterangan |
+|----------|-------------|------------|
+| ESP32 | Dev Board (30/38 pin) | Microcontroller dengan WiFi |
+| Sensor PIR HC-SR501 | 5V, output digital | Deteksi gerakan |
+| Relay Module | 1-channel 5V | Kontrol lampu |
+| Lampu LED | 10W (simulasi) | Beban yang dikontrol |
+| Kabel Jumper | Male-Female / Male-Male | Koneksi komponen |
+
+### Wiring
+
+| Pin ESP32 | Terhubung ke |
+|-----------|-------------|
+| GPIO 14 | OUT Sensor PIR |
+| GPIO 27 | IN Relay Module |
+| 5V / 3.3V | VCC Sensor PIR & Relay |
+| GND | GND Sensor PIR & Relay |
+
+## Setup Firebase
+
+Project Firebase sudah dibuat: **`kicaw-smart-room`**
+
+### Konfigurasi Realtime Database
+
+1. Buka [Firebase Console](https://console.firebase.google.com/project/kicaw-smart-room/overview)
+2. Pilih **Realtime Database** → **Rules**
+3. Atur rules (untuk testing):
+
 ```json
 {
   "rules": {
@@ -20,46 +76,61 @@ Proyek Tugas Besar: Prototipe Otomatisasi Lampu Ruangan Berbasis ESP32 untuk Mem
   }
 }
 ```
-4. Dapatkan **Database URL** dan **Web API Key** (Project Settings).
 
-### 2. ESP32 Setup
-1. Buka `esp32_iot/main.ino` di Arduino IDE.
-2. Pastikan Anda telah menginstal library: `Firebase ESP32 Client` (oleh Mobizt).
-3. Ubah `WIFI_SSID`, `WIFI_PASSWORD`, `API_KEY`, dan `DATABASE_URL` sesuai milik Anda.
-4. Upload ke ESP32.
+## Setup ESP32 (Arduino IDE)
 
-### 3. Flutter Setup
-Karena kita membuat scaffold secara manual, jalankan perintah berikut di dalam folder `flutter_dashboard`:
+1. Buka `esp32_iot/esp32_iot.ino` di **Arduino IDE**
+2. Install library **Firebase ESP32 Client** oleh Mobizt via Library Manager
+3. Ubah kredensial WiFi sesuai jaringan Anda:
+
+```cpp
+#define WIFI_SSID "NAMA_WIFI_ANDA"
+#define WIFI_PASSWORD "PASSWORD_WIFI_ANDA"
+```
+
+4. Upload ke ESP32
+5. Buka **Serial Monitor** (115200 baud) untuk melihat status koneksi
+
+## Setup Flutter Dashboard
+
+### Prasyarat
+- Flutter SDK (>=3.0)
+- Sudah menjalankan `flutterfire configure` (file `firebase_options.dart` sudah tersedia)
+
+### Instalasi
+
 ```bash
-# Untuk mengunduh dependensi dan men-generate folder platform (android, web, ios, dll)
-flutter create . 
+cd flutter_dashboard
 flutter pub get
+# Hapus komentar Firebase.initializeApp() di lib/main.dart sudah dilakukan
+flutter run
 ```
-Lalu konfigurasi Firebase untuk Flutter:
-```bash
-# Pastikan Firebase CLI terinstall
-dart pub global activate flutterfire_cli
-flutterfire configure --project=NAMA_PROJECT_FIREBASE_ANDA
-```
-Hapus *comment* `Firebase.initializeApp()` pada `lib/main.dart` dan jalankan aplikasi.
 
----
+> **Catatan untuk Linux**: Jika `flutterfire configure` perlu dijalankan ulang:
+> ```bash
+> dart pub global activate flutterfire_cli
+> flutterfire configure --project=kicaw-smart-room
+> ```
 
-## 🚀 Mengunggah ke GitHub (via gh CLI)
+## Parameter Emisi
 
-Repositori ini siap untuk diunggah menggunakan akun GitHub `terra2n`.
-Jalankan skrip berikut di terminal pada direktori `smart_room_eco2`:
+Perhitungan emisi CO2 yang dicegah berdasarkan jurnal Singh & Dhanekar (2026):
 
-```bash
-# Pastikan Anda telah login menggunakan akun terra2n
-# gh auth login
+| Parameter | Nilai | Satuan |
+|-----------|-------|--------|
+| Daya lampu simulasi | 10 | Watt |
+| Faktor emisi grid | 0.85 | kg CO2/kWh |
+| Energi dihemat | `P × t` | Wh |
+| CO2 dicegah | `(Wh / 1000) × 0.85 × 1.000.000` | mg |
 
-# 1. Tambahkan semua file ke git tracking
-git add .
+## Kontribusi
 
-# 2. Buat commit pertama
-git commit -m "feat: inisialisasi project ESP32 IoT dan Flutter Dashboard untuk Tugas Besar eCO2"
+1. Fork repo ini
+2. Buat branch baru: `git checkout -b fitur-anda`
+3. Commit perubahan: `git commit -m "feat: menambahkan fitur X"`
+4. Push ke branch: `git push origin fitur-anda`
+5. Buat Pull Request
 
-# 3. Buat repositori baru di GitHub dengan gh cli
-gh repo create terra2n/smart_room_eco2 --public --source=. --remote=origin --push
-```
+## LICENSE
+
+[MIT](LICENSE) © 2026 terra2n

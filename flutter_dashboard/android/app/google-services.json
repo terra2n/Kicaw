@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "54492635153",
+    "firebase_url": "https://kicaw-smart-room-default-rtdb.firebaseio.com",
+    "project_id": "kicaw-smart-room",
+    "storage_bucket": "kicaw-smart-room.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:54492635153:android:a94a5965c88c09dc8c51b0",
+        "android_client_info": {
+          "package_name": "com.example.dashboard_eco2"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAh6T6BfKPQN06R-ei4QwN2_8iSvRgKyRg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

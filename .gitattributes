@@ -1,0 +1,24 @@
+# Normalisasi line endings
+* text=auto
+
+# Source code
+*.ino text
+*.cpp text
+*.h text
+*.dart text
+*.yaml text
+*.json text
+*.md text
+*.xml text
+*.gradle text
+*.properties text
+*.cfg text
+
+# Binary files
+*.png binary
+*.jpg binary
+*.ico binary
+*.jar binary
+*.keystore binary
+*.pdf binary
+*.otf binary

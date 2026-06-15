@@ -1,0 +1,25 @@
+# OS files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+*.bak
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Build
+build/
+*.log
+*.tmp
+
+# Firebase cache
+.firebase/
+
+# PlatformIO (if added later)
+.pio/
+.pioenvs/
+.piolibdeps/

@@ -10,8 +10,8 @@
 #define WIFI_PASSWORD "PASSWORD_WIFI_ANDA"
 
 // Ganti dengan API Key dan Database URL Firebase Anda
-#define API_KEY "API_KEY_FIREBASE_ANDA"
-#define DATABASE_URL "URL_DATABASE_FIREBASE_ANDA" 
+#define API_KEY "AIzaSyC4Xkz95z-hRSMszA4VUi8mLARpd7QdVFc"
+#define DATABASE_URL "https://kicaw-smart-room-default-rtdb.firebaseio.com" 
 
 // ==========================================
 // 2. Definisi Pin pada ESP32
