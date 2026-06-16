@@ -34,8 +34,8 @@ const int THRESHOLD_KOSONG = 20;
 // =========================================================================
 // 4. KREDENSIAL WiFi & FIREBASE (ISI SESUAI MILIK ANDA)
 // =========================================================================
-#define WIFI_SSID "NAMA_WIFI_ANDA"
-#define WIFI_PASSWORD "PASSWORD_WIFI_ANDA"
+#define WIFI_SSID "TOTOLINK_A720R_5G"
+#define WIFI_PASSWORD "banjarsari35_d"
 #define API_KEY "AIzaSyC4Xkz95z-hRSMszA4VUi8mLARpd7QdVFc"
 #define DATABASE_URL "https://kicaw-smart-room-default-rtdb.firebaseio.com"
 

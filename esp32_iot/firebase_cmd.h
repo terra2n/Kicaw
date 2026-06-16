@@ -67,7 +67,8 @@ void cmdPushConfigResult(RadarConfig *cfg) {
     Database.set<uint8_t>(async_client, gPath + "/stationary", cfg->stationary_sens[g]);
   }
 
-  Database.set<String>(async_client, FB_CMD_CONFIG + "/last_updated", String(millis()));
+  // FIXED: Ditambahkan String() membungkus FB_CMD_CONFIG
+  Database.set<String>(async_client, String(FB_CMD_CONFIG) + "/last_updated", String(millis()));
 }
 
 // =========================================================================
@@ -101,8 +102,6 @@ void cmdPushFirmware(uint8_t major, uint8_t minor, uint32_t bugfix) {
 
 // =========================================================================
 // PARSE PARAMETER JSON SEDERHANA
-// Mengambil nilai integer dari key tertentu dalam string JSON
-// Contoh: {"moving_gate":3,"stationary_gate":2,"timeout":5}
 // =========================================================================
 int cmdParseIntParam(const String &json, const String &key, int defaultVal) {
   int idx = json.indexOf(key);
@@ -125,7 +124,6 @@ int cmdParseIntParam(const String &json, const String &key, int defaultVal) {
 
   return neg ? -val : val;
 }
-
 
 // =========================================================================
 // PROSES COMMAND DARI FIREBASE
@@ -163,143 +161,5 @@ void cmdProcess(const String &command, const String &params) {
   }
   else if (command == "set_max_gate") {
     int mGate = cmdParseIntParam(params, "moving_gate", 3);
-    int sGate = cmdParseIntParam(params, "stationary_gate", 2);
-    int timeout = cmdParseIntParam(params, "timeout", 5);
-    if (radarSetMaxGate((uint8_t)mGate, (uint8_t)sGate, (uint16_t)timeout)) {
-      delay(300);
-      if (radarBacaKonfigurasi(&cfg)) cmdPushConfigResult(&cfg);
-      cmdUpdateStatus("done");
-    } else {
-      cmdUpdateStatus("error", "Set max gate failed");
-    }
-  }
-  else if (command == "set_single_gate") {
-    int gate = cmdParseIntParam(params, "gate", 0);
-    int moving = cmdParseIntParam(params, "moving", 50);
-    int stationary = cmdParseIntParam(params, "stationary", 50);
-    if (radarSetGateSensitivitas((uint8_t)gate, (uint8_t)moving, (uint8_t)stationary)) {
-      delay(300);
-      if (radarBacaKonfigurasi(&cfg)) cmdPushConfigResult(&cfg);
-      cmdUpdateStatus("done");
-    } else {
-      cmdUpdateStatus("error", "Set sensitivity failed");
-    }
-  }
-  else if (command == "set_all_gates") {
-    uint8_t moving[9], stationary[9];
-    for (int i = 0; i < 9; i++) {
-      moving[i] = (uint8_t)cmdParseIntParam(params, "m"+String(i), 50);
-      stationary[i] = (uint8_t)cmdParseIntParam(params, "s"+String(i), 50);
-    }
-    if (radarSetSemuaGateSensitivitas(moving, stationary)) {
-      delay(300);
-      if (radarBacaKonfigurasi(&cfg)) cmdPushConfigResult(&cfg);
-      cmdUpdateStatus("done");
-    } else {
-      cmdUpdateStatus("error", "Set all gates failed");
-    }
-  }
-  else if (command == "engineering_on") {
-    if (radarSetEngineeringMode(true)) {
-      engineeringMode = true;
-      cmdUpdateStatus("done");
-    } else {
-      cmdUpdateStatus("error", "Engineering ON failed");
-    }
-  }
-  else if (command == "engineering_off") {
-    if (radarSetEngineeringMode(false)) {
-      engineeringMode = false;
-      cmdUpdateStatus("done");
-    } else {
-      cmdUpdateStatus("error", "Engineering OFF failed");
-    }
-  }
-  else if (command == "factory_reset") {
-    if (radarFactoryReset()) {
-      cmdUpdateStatus("done");
-    } else {
-      cmdUpdateStatus("error", "Factory reset failed");
-    }
-  }
-  else if (command == "restart") {
-    radarRestart();
-    cmdUpdateStatus("done");
-  }
-  else {
-    cmdUpdateStatus("error", "Unknown: " + command);
-  }
-
-  cmdProcessing = false;
-}
-
-
-// =========================================================================
-// ENGINEERING MODE LOOP
-// Panggil dari loop() setiap 1 detik saat engineeringMode=true
-// =========================================================================
-void cmdEngineeringLoop() {
-  if (!engineeringMode) return;
-
-  unsigned long now = millis();
-  if (now - lastEngPush < 1000) return;
-  lastEngPush = now;
-
-  EngData eng;
-  if (radarBacaEngData(&eng)) {
-    cmdPushEngData(&eng);
-
-    Serial.print("[ENG] Presence: ");
-    Serial.print(eng.presence_distance_cm);
-    Serial.print("cm | Moving: ");
-    Serial.print(eng.moving_distance_cm);
-    Serial.print("cm | Stationary: ");
-    Serial.print(eng.stationary_distance_cm);
-    Serial.println("cm");
-  }
-}
-
-
-// =========================================================================
-// CHECK COMMAND DARI FIREBASE (ASYNC POLLING)
-// Panggil dari loop() setiap 500ms
-// =========================================================================
-void cmdCheckFirebase() {
-  if (!app.ready() || cmdProcessing) return;
-
-  static unsigned long lastPoll = 0;
-  unsigned long now = millis();
-  if (now - lastPoll < 500) return;
-  lastPoll = now;
-
-  // Baca command dari Firebase via async get
-  // FirebaseClient library akan memproses di background
-  // Hasilnya masuk via callback
-  Database.get<String>(async_client, FB_CMD_PATH, true,
-    [](String &data, AsyncResult &result) {
-      if (!result.isData()) return;
-
-      String cmd = data;
-      cmd.trim();
-
-      if (cmd.length() == 0 || cmd == "none") return;
-      if (cmd == lastCommand) return;  // sudah diproses
-
-      lastCommand = cmd;
-      cmdProcessing = true;
-      cmdUpdateStatus("processing");
-      Serial.print("[CMD] Received: ");
-      Serial.println(cmd);
-
-      // Baca params
-      Database.get<String>(async_client, FB_CMD_PARAMS, true,
-        [cmd](String &pData, AsyncResult &pResult) {
-          String params = pResult.isData() ? pData : "{}";
-          cmdProcess(cmd, params);
-        }
-      );
-    }
-  );
-}
 
 #endif // FIREBASE_CMD_H

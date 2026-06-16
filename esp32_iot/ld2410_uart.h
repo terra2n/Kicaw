@@ -29,6 +29,8 @@ static const uint8_t CMD_FACTORY_RESET[]   = {0xFD,0xFC,0xFB,0xFA,0x00,0x00,0x62
 static const uint8_t CMD_RESTART[]         = {0xFD,0xFC,0xFB,0xFA,0x00,0x00,0x64,0x00,0x04,0x03,0x02,0x01};
 // Engineering mode ON
 static const uint8_t CMD_ENG_MODE_ON[]     = {0xFD,0xFC,0xFB,0xFA,0x01,0x00,0x63,0x00,0x01,0x00,0x04,0x03,0x02,0x01};
+// Engineering mode OFF
+static const uint8_t CMD_ENG_MODE_OFF[]    = {0xFD,0xFC,0xFB,0xFA,0x01,0x00,0x63,0x00,0x00,0x00,0x04,0x03,0x02,0x01};
 
 // =========================================================================
 // DATA STRUCTURES
@@ -92,6 +94,10 @@ static bool radarRawCommand(const uint8_t cmd[], size_t cmdLen,
   if (*respLen >= 4) {
     Serial.print("[UART] Response "); Serial.print(*respLen); Serial.println(" bytes");
     return true;
+  }
+  Serial.println("[UART] No response from radar");
+  return false;
+}
 
 // =========================================================================
 // HIGH-LEVEL FUNCTIONS
@@ -160,6 +166,21 @@ bool radarBacaKonfigurasi(RadarConfig *cfg) {
     uint8_t gateIdx = readResp[offset];
     if (gateIdx <= 8) {
       cfg->moving_sens[gateIdx]     = readResp[offset + 1];
+      cfg->stationary_sens[gateIdx] = readResp[offset + 2];
+      Serial.print("[RADAR] Gate "); Serial.print(gateIdx);
+      Serial.print(": M="); Serial.print(cfg->moving_sens[gateIdx]);
+      Serial.print(" S="); Serial.println(cfg->stationary_sens[gateIdx]);
+      gateCount++;
+      offset += 3;
+    } else {
+      offset++;
+    }
+  }
+
+  cfg->valid = true;
+  Serial.println("[RADAR] Configuration read successfully");
+  return true;
+}
 
 /**
  * Set max distance gates dan inactivity timeout.
@@ -243,22 +264,6 @@ bool radarSetGateSensitivitas(uint8_t gate, uint8_t movingSens,
   return false;
 }
 
-      cfg->stationary_sens[gateIdx] = readResp[offset + 2];
-      Serial.print("[RADAR] Gate "); Serial.print(gateIdx);
-      Serial.print(": M="); Serial.print(cfg->moving_sens[gateIdx]);
-      Serial.print(" S="); Serial.println(cfg->stationary_sens[gateIdx]);
-      gateCount++;
-      offset += 3;
-    } else {
-      offset++;
-    }
-  }
-
-  cfg->valid = true;
-  Serial.println("[RADAR] Configuration read successfully");
-  return true;
-}
-
 /**
  * Set sensitivitas untuk SEMUA gate sekaligus.
  */
@@ -318,6 +323,17 @@ bool radarBacaFirmware(uint8_t *major, uint8_t *minor, uint32_t *bugfix) {
 
   if (respLen >= 14 && resp[0] == 0xFD && resp[6] == 0x70) {
     *major = resp[8];
+    *minor = resp[9];
+    *bugfix = (resp[10] << 16) | (resp[11] << 8) | resp[12];
+    Serial.print("[RADAR] Firmware v");
+    Serial.print(*major); Serial.print(".");
+    Serial.print(*minor); Serial.print(".");
+    Serial.println(*bugfix, HEX);
+    return true;
+  }
+  Serial.println("[RADAR] Failed to read firmware");
+  return false;
+}
 
 /**
  * Aktifkan/nonaktifkan engineering mode.
@@ -397,20 +413,6 @@ bool radarBacaEngData(EngData *data) {
   return false;
 }
 
-#endif // LD2410_UART_H
-
-    *minor = resp[9];
-    *bugfix = (resp[10] << 16) | (resp[11] << 8) | resp[12];
-    Serial.print("[RADAR] Firmware v");
-    Serial.print(*major); Serial.print(".");
-    Serial.print(*minor); Serial.print(".");
-    Serial.println(*bugfix, HEX);
-    return true;
-  }
-  Serial.println("[RADAR] Failed to read firmware");
-  return false;
-}
-
 /**
  * Factory reset radar.
  */
@@ -418,7 +420,7 @@ bool radarFactoryReset() {
   Serial.println("[RADAR] Factory reset...");
   uint8_t resp[128]; size_t respLen = 0;
   bool ok = radarRawCommand(CMD_FACTORY_RESET, sizeof(CMD_FACTORY_RESET),
-                             resp, &respLen, 1000);
+                               resp, &respLen, 1000);
   if (ok && respLen >= 10) {
     Serial.println("[RADAR] Factory reset accepted");
     return true;
@@ -434,16 +436,9 @@ bool radarRestart() {
   Serial.println("[RADAR] Restarting...");
   uint8_t resp[128]; size_t respLen = 0;
   bool ok = radarRawCommand(CMD_RESTART, sizeof(CMD_RESTART),
-                             resp, &respLen, 1000);
+                               resp, &respLen, 1000);
   if (ok) Serial.println("[RADAR] Restart command sent");
   return ok;
 }
 
-
-  }
-  Serial.println("[UART] No response from radar");
-  return false;
-}
-
-// Engineering mode OFF
-static const uint8_t CMD_ENG_MODE_OFF[]    = {0xFD,0xFC,0xFB,0xFA,0x01,0x00,0x63,0x00,0x00,0x00,0x04,0x03,0x02,0x01};
+#endif // LD2410_UART_H
