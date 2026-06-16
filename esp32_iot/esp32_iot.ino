@@ -3,7 +3,8 @@
 #include <WiFiClientSecure.h>
 #define ENABLE_DATABASE
 #include <FirebaseClient.h>
-#include "firebase_cmd.h"  // Radar configuration via Firebase
+#include "secrets.h"        // WiFi & Firebase credentials
+#include "firebase_cmd.h"   // Radar configuration via Firebase
 
 
 // =========================================================================
@@ -32,12 +33,10 @@ const int THRESHOLD_MASUK  = 10;
 const int THRESHOLD_KOSONG = 20;
 
 // =========================================================================
-// 4. KREDENSIAL WiFi & FIREBASE (ISI SESUAI MILIK ANDA)
+// 4. KREDENSIAL WiFi & FIREBASE
 // =========================================================================
-#define WIFI_SSID "TOTOLINK_A720R_5G"
-#define WIFI_PASSWORD "banjarsari35_d"
-#define API_KEY "AIzaSyC4Xkz95z-hRSMszA4VUi8mLARpd7QdVFc"
-#define DATABASE_URL "https://kicaw-smart-room-default-rtdb.firebaseio.com"
+// Kredensial disimpan di file secrets.h (lihat secrets.example.h)
+// File secrets.h sudah di-gitignore untuk keamanan
 
 // =========================================================================
 // 5. VARIABEL KONTROL & TIMER INTERNAL

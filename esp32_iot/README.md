@@ -74,13 +74,23 @@ ESP32                    Relay Module
 
 ### 2. Configure WiFi & Firebase
 
-**⚠️ PENTING:** Sebelum compile, Anda **HARUS** mengisi kredensial WiFi dan Firebase di file `esp32_iot.ino`.
+**⚠️ PENTING:** Sebelum compile, Anda **HARUS** mengisi kredensial WiFi dan Firebase.
 
 #### Step-by-Step Configuration:
 
-**A. WiFi Credentials**
+**A. Setup Secrets File**
 
-Buka `esp32_iot.ino`, cari baris 37-38, lalu ganti dengan kredensial WiFi Anda:
+1. **Copy file template:**
+   ```bash
+   cd esp32_iot
+   cp secrets.example.h secrets.h
+   ```
+
+2. **Edit `secrets.h`** dengan text editor (Arduino IDE, VS Code, Notepad++, dll)
+
+**B. WiFi Credentials**
+
+Edit `secrets.h`, cari bagian WiFi:
 
 **SEBELUM:**
 ```cpp
@@ -96,7 +106,7 @@ Buka `esp32_iot.ino`, cari baris 37-38, lalu ganti dengan kredensial WiFi Anda:
 
 > **Catatan:** ESP32 hanya support WiFi 2.4GHz, pastikan router Anda tidak restricted ke 5GHz saja.
 
-**B. Firebase Credentials**
+**C. Firebase Credentials**
 
 Dapatkan kredensial dari Firebase Console:
 
@@ -107,27 +117,28 @@ Dapatkan kredensial dari Firebase Console:
 5. **Buka** tab **Realtime Database** di sidebar
 6. **Copy** Database URL (contoh: `https://kicaw-smart-room-default-rtdb.firebaseio.com`)
 
-Buka `esp32_iot.ino`, cari baris 39-40, lalu ganti:
+Edit `secrets.h`, cari bagian Firebase:
 
 **SEBELUM:**
 ```cpp
-#define API_KEY "AIzaSyC4Xkz95z-hRSMszA4VUi8mLARpd7QdVFc"
-#define DATABASE_URL "https://kicaw-smart-room-default-rtdb.firebaseio.com"
+#define API_KEY "YOUR_FIREBASE_API_KEY"
+#define DATABASE_URL "https://YOUR_PROJECT-default-rtdb.firebaseio.com"
 ```
 
 **SESUDAH** (ganti dengan milik Anda):
 ```cpp
 #define API_KEY "AIzaSyXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
-#define DATABASE_URL "https://YOUR_PROJECT_ID-default-rtdb.firebaseio.com"
+#define DATABASE_URL "https://your-project-id-default-rtdb.firebaseio.com"
 ```
 
-> **⚠️ JANGAN** gunakan API Key dari contoh di atas! Gunakan milik project Anda sendiri.
+> **⚠️ KEAMANAN:** File `secrets.h` sudah otomatis di-gitignore. Jangan commit credentials ke Git!
 
-**C. Verify Configuration**
+**D. Verify Configuration**
 
 Sebelum upload, pastikan:
-- ✅ WiFi SSID dan password sudah diganti
-- ✅ API Key sudah diganti (bukan yang default)
+- ✅ File `secrets.h` sudah dibuat (copy dari `secrets.example.h`)
+- ✅ WiFi SSID dan password sudah diisi
+- ✅ Firebase API Key sudah diisi (bukan yang default)
 - ✅ Database URL sesuai dengan project Firebase Anda
 - ✅ Tidak ada typo atau kutip ganda yang hilang
 

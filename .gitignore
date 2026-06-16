@@ -23,3 +23,4 @@ build/
 .pio/
 .pioenvs/
 .piolibdeps/
+esp32_iot/secrets.h
