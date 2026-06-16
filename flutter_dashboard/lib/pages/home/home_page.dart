@@ -110,8 +110,8 @@ class _HomePageState extends State<HomePage> {
                   return EnergyGrid(
                     whSaved: s.savedEnergyWh,
                     co2Mg: s.preventedCo2Mg,
-                    minutesOff: (s.savedEnergyWh / 10 * 60).toInt(),
-                    lampPowerW: 10,
+                    minutesOff: (s.savedEnergyWh / 3 * 60).toInt(),
+                    lampPowerW: 3,
                   );
                 },
               )),

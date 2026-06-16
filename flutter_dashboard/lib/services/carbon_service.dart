@@ -1,6 +1,6 @@
 class CarbonService {
   static const double gridFactorKgPerKwh = 0.85;
-  static const double lampPowerW = 10.0;
+  static const double lampPowerW = 3.0;
 
   double whToCo2Mg(double wh) {
     final kwh = wh / 1000.0;

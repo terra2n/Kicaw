@@ -3,6 +3,7 @@ import 'pages/home/home_page.dart';
 import 'pages/statistics/statistics_page.dart';
 import 'pages/carbon/carbon_page.dart';
 import 'pages/settings/settings_page.dart';
+import 'pages/radar/radar_page.dart';
 import 'services/settings_service.dart';
 import 'services/notification_service.dart';
 import 'theme/app_theme.dart';
@@ -53,6 +54,9 @@ class _AppState extends State<App> {
       darkTheme: AppTheme.dark,
       themeMode: _themeMode,
       debugShowCheckedModeBanner: false,
+      routes: {
+        '/radar': (context) => const RadarPage(),
+      },
       home: Scaffold(
         body: IndexedStack(
           index: _currentIndex,

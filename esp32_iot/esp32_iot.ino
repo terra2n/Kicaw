@@ -3,26 +3,33 @@
 #include <WiFiClientSecure.h>
 #define ENABLE_DATABASE
 #include <FirebaseClient.h>
+#include "firebase_cmd.h"  // Radar configuration via Firebase
+
 
 // =========================================================================
-// 1. KONFIGURASI PIN HARDWARE (TETAP Sesuai Rangkaian Kelompok 5)
+// 1. KONFIGURASI PIN HARDWARE (Sesuai Rangkaian Kelompok 5)
 // =========================================================================
-const int PIN_RADAR = 14;  // TETAP: Pin OUT Radar masuk ke GPIO 14
-const int PIN_RELAY = 27;  // TETAP: Pin IN1 Relai masuk ke GPIO 27
+const int PIN_RADAR    = 14;   // OUT Sensor Radar -> GPIO 14 (digital)
+const int PIN_RELAY    = 27;   // IN1 Relay -> GPIO 27
+const int PIN_RADAR_RX = 16;   // UART RX Radar -> GPIO 16
+const int PIN_RADAR_TX = 17;   // UART TX Radar -> GPIO 17
 
 // =========================================================================
-// 2. KUNCI JARAK PALING MENTOK (GATE 0 = RADIUS DI BAWAH 75 CM)
+// 2. KUNCI JARAK RADAR (GATE 0 = Radius < 75 cm)
 // =========================================================================
 const byte BATAS_GERBANG_JARAK = 0;
 
 // =========================================================================
-// 3. KONFIGURASI PARAMETER AUDIT ENERGI & TIMEOUT 1 DETIK
+// 3. KONFIGURASI PARAMETER AUDIT ENERGI
 // =========================================================================
-const float DAYA_LAMPU_WATT = 10.0;
+const float DAYA_LAMPU_WATT   = 3.0;
 const float FAKTOR_EMISI_GRID = 0.85;
 
-// REQUEST: Lampu otomatis mati jika 1 detik tidak terdeteksi objek (1000 ms)
-const unsigned long TIMEOUT_LAMPU_MS = 1000;
+// Threshold counter (delay loop = 50 ms):
+// - HIGH stabil 10x (0.5 detik) -> nyalakan lampu
+// - LOW  stabil 20x (1.0 detik) -> matikan lampu
+const int THRESHOLD_MASUK  = 10;
+const int THRESHOLD_KOSONG = 20;
 
 // =========================================================================
 // 4. KREDENSIAL WiFi & FIREBASE (ISI SESUAI MILIK ANDA)
@@ -35,14 +42,14 @@ const unsigned long TIMEOUT_LAMPU_MS = 1000;
 // =========================================================================
 // 5. VARIABEL KONTROL & TIMER INTERNAL
 // =========================================================================
+bool  lampuNyala       = false;
+int   hitungLow        = 0;
+int   hitungHigh       = 0;
 unsigned long waktuMulaiMati = 0;
-unsigned long waktuGerakanTerakhir = 0;
-float totalEnergiDiselamatkan_Wh = 0.0;
-float totalCO2Dicegah_mg = 0.0;
-bool statusLampuSebelumnya = false;
+float totalEnergi_Wh   = 0.0;
+float totalCO2_mg      = 0.0;
 
 unsigned long lastUpdateFirebase = 0;
-unsigned long lastMonitorLog = 0;
 
 // =========================================================================
 // 6. OBJEK FIREBASE
@@ -55,32 +62,52 @@ AsyncClient async_client(ssl_client);
 RealtimeDatabase Database;
 
 // =========================================================================
-// FUNGSI: Konfigurasi jarak radar HLK-LD2410C
+// FUNGSI: Konfigurasi jarak radar HLK-LD2410C via UART
+// (Refactored: pakai library ld2410_uart.h)
 // =========================================================================
 void konfigurasiJarakRadarFisik(byte gateTerap) {
-  Serial.println("[RADAR] Menghubungi sensor untuk mengunci ke jarak terpendek (< 75cm)...");
+  Serial.println("[RADAR] Mengunci jangkauan ke Gate 0 (< 75cm)...");
 
-  HardwareSerial RadarSerial(2);
-  RadarSerial.begin(256000, SERIAL_8N1, PIN_RADAR, PIN_RELAY);
-  delay(500);
+  if (radarSetMaxGate(gateTerap, gateTerap, 5)) {
+    Serial.println("[SUCCESS] Konfigurasi selesai!");
+  } else {
+    Serial.println("[WARN] Radar mungkin tidak merespon, lanjut...");
+  }
 
-  // 1. Perintah masuk Mode Konfigurasi
-  byte cmdEnableConfig[] = {0xFD, 0xFC, 0xFB, 0xFA, 0x04, 0x00, 0xFF, 0x00, 0x01, 0x00, 0x04, 0x03, 0x02, 0x01};
-  RadarSerial.write(cmdEnableConfig, sizeof(cmdEnableConfig));
+  // Verifikasi konfigurasi
   delay(200);
+  RadarConfig cfg;
+  if (radarBacaKonfigurasi(&cfg)) {
+    Serial.print("[RADAR] Max gate terkonfirmasi: moving=");
+    Serial.print(cfg.max_moving_gate);
+    Serial.print(" stationary=");
+    Serial.println(cfg.max_stationary_gate);
+  }
+}
 
-  // 2. Perintah mengunci Max Distance Gate ke Gate 0
-  byte cmdMaxDistance[] = {0xFD, 0xFC, 0xFB, 0xFA, 0x14, 0x00, 0x60, 0x00, 0x00, 0x00, gateTerap, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x03, 0x02, 0x01};
-  RadarSerial.write(cmdMaxDistance, sizeof(cmdMaxDistance));
-  delay(200);
+// =========================================================================
+// FUNGSI: Push data ke Firebase
+// =========================================================================
+void pushKeFirebase() {
+  if (!app.ready()) return;
 
-  // 3. Perintah keluar Mode Konfigurasi & Save permanen
-  byte cmdEndConfig[] = {0xFD, 0xFC, 0xFB, 0xFA, 0x02, 0x00, 0xFE, 0x00, 0x04, 0x03, 0x02, 0x01};
-  RadarSerial.write(cmdEndConfig, sizeof(cmdEndConfig));
-  delay(500);
+  // Hitung total real-time (akumulasi + durasi mati berjalan)
+  float totalWh = totalEnergi_Wh;
+  float totalMg = totalCO2_mg;
 
-  RadarSerial.end();
-  Serial.println("[SUCCESS] Jangkauan maksimal dikunci pada Gate 0 (Radius < 75 cm)!");
+  if (!lampuNyala && waktuMulaiMati > 0) {
+    unsigned long durasiMati_ms = millis() - waktuMulaiMati;
+    float durasiMati_jam = (float)durasiMati_ms / 3600000.0;
+    float energiBerjalan_Wh = DAYA_LAMPU_WATT * durasiMati_jam;
+    float co2Berjalan_mg = (energiBerjalan_Wh / 1000.0) * FAKTOR_EMISI_GRID * 1000000.0;
+    totalWh += energiBerjalan_Wh;
+    totalMg += co2Berjalan_mg;
+  }
+
+  Database.set<bool>(async_client, "ruangan_01/status_lampu", lampuNyala);
+  Database.set<bool>(async_client, "ruangan_01/status_radar", lampuNyala);
+  Database.set<float>(async_client, "ruangan_01/energi_dihemat_wh", totalWh);
+  Database.set<float>(async_client, "ruangan_01/co2_dicegah_mg", totalMg);
 }
 
 // =========================================================================
@@ -90,10 +117,10 @@ void setup() {
   Serial.begin(115200);
   delay(1000);
 
-  Serial.println("=================================================");
-  Serial.println("    SISTEM OTOMATISASI LAMPU - RADAR HLK-LD2410C ");
-  Serial.println("    TIMEOUT 1 DETIK | KELOMPOK 5                ");
-  Serial.println("=================================================");
+  Serial.println("================================================");
+  Serial.println("  SISTEM HEMAT ENERGI OTOMATIS - KELOMPOK 5");
+  Serial.println("  ESP32 + HLK-LD2410C + Firebase");
+  Serial.println("================================================");
 
   konfigurasiJarakRadarFisik(BATAS_GERBANG_JARAK);
 
@@ -101,8 +128,16 @@ void setup() {
   pinMode(PIN_RELAY, OUTPUT);
   digitalWrite(PIN_RELAY, HIGH);
 
-  Serial.println("[READY] Jarak dikunci terpendek. Sistem siap!");
+  hitungLow      = 0;
+  hitungHigh     = 0;
+  lampuNyala     = false;
+  waktuMulaiMati = millis();
 
+  Serial.println("  Status Awal : LAMPU MATI");
+  Serial.println("  Daya Lampu  : 3 Watt");
+  Serial.println("------------------------------------------------");
+
+  // --- Koneksi WiFi ---
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   Serial.print("Menghubungkan ke Wi-Fi");
   while (WiFi.status() != WL_CONNECTED) {
@@ -110,9 +145,10 @@ void setup() {
     delay(300);
   }
   Serial.println();
-  Serial.print("Terhubung! IP Address: ");
+  Serial.print("Terhubung! IP: ");
   Serial.println(WiFi.localIP());
 
+  // --- Koneksi Firebase ---
   ssl_client.setInsecure();
   ssl_client.setConnectionTimeout(1000);
   ssl_client.setHandshakeTimeout(5);
@@ -122,7 +158,24 @@ void setup() {
   Database.url(DATABASE_URL);
 
   Serial.println("Berhasil terhubung ke Firebase!");
-  Serial.println("-------------------------------------------------");
+  Serial.println("------------------------------------------------");
+
+  // Setup Firebase command listener
+  setupFirebaseCommands();
+
+  pushKeFirebase();
+}
+
+// =========================================================================
+// PROSES SETELAH FIREBASE CONNECT — Setup command listener
+// =========================================================================
+void setupFirebaseCommands() {
+  if (!app.ready()) return;
+  Database.set<String>(async_client, FB_CMD_PATH, "none");
+  Database.set<String>(async_client, FB_CMD_STATUS, "idle");
+  Database.set<String>(async_client, FB_CMD_PARAMS, "{}");
+  Database.set<uint32_t>(async_client, FB_RADAR_CFG "/command_ts", 0);
+  Serial.println("[CMD] Firebase command paths initialized");
 }
 
 // =========================================================================
@@ -131,85 +184,99 @@ void setup() {
 void loop() {
   app.loop();
 
-  int statusRadar = digitalRead(PIN_RADAR);
+  unsigned long sekarang = millis();
 
-  if (statusRadar == HIGH) {
-    waktuGerakanTerakhir = millis();
+  // Cek command dari Firebase (setiap 500ms)
+  cmdCheckFirebase();
+
+  // Engineering mode loop (setiap 1 detik)
+  cmdEngineeringLoop();
+
+  int rawRadar = digitalRead(PIN_RADAR);
+
+  // ── Stabilisasi counter ──
+  if (rawRadar == HIGH) {
+    hitungHigh++;
+    hitungLow = 0;
+    if (hitungHigh > THRESHOLD_MASUK + 1)
+      hitungHigh = THRESHOLD_MASUK + 1;
+  } else {
+    hitungLow++;
+    hitungHigh = 0;
+    if (hitungLow > THRESHOLD_KOSONG + 1)
+      hitungLow = THRESHOLD_KOSONG + 1;
   }
 
-  if (millis() - waktuGerakanTerakhir < TIMEOUT_LAMPU_MS) {
+  // ── KONDISI NYALA: HIGH stabil >= 10x (~0.5 detik) ──
+  if (hitungHigh >= THRESHOLD_MASUK && !lampuNyala) {
     digitalWrite(PIN_RELAY, LOW);
+    lampuNyala = true;
+    hitungLow  = 0;
 
-    if (statusLampuSebelumnya == false) {
-      Serial.println("\n[STATUS] Objek Terdeteksi Dekat! Lampu Menyala.");
+    // Audit energi selama periode mati sebelumnya
+    if (waktuMulaiMati > 0) {
+      unsigned long durasi_ms = sekarang - waktuMulaiMati;
+      float durasi_jam        = durasi_ms / 3600000.0;
+      float energi_Wh         = DAYA_LAMPU_WATT * durasi_jam;
+      float co2_mg            = (energi_Wh / 1000.0) * FAKTOR_EMISI_GRID * 1000000.0;
+      totalEnergi_Wh         += energi_Wh;
+      totalCO2_mg            += co2_mg;
 
-      if (app.ready()) {
-        Database.set<bool>(async_client, "ruangan_01/status_lampu", true);
-        Database.set<bool>(async_client, "ruangan_01/status_radar", true);
-      }
-
-      if (waktuMulaiMati > 0) {
-        unsigned long durasiMati_ms = millis() - waktuMulaiMati;
-        float durasiMati_jam = (float)durasiMati_ms / 3600000.0;
-
-        float energiDihemat_Wh = DAYA_LAMPU_WATT * durasiMati_jam;
-        float co2Dicegah_mg = (energiDihemat_Wh / 1000.0) * FAKTOR_EMISI_GRID * 1000000.0;
-
-        totalEnergiDiselamatkan_Wh += energiDihemat_Wh;
-        totalCO2Dicegah_mg += co2Dicegah_mg;
-
-        Serial.println("-------------------------------------------------");
-        Serial.print(">> [AUDIT] Lampu Mati Selama: "); Serial.print(durasiMati_ms / 1000); Serial.println(" detik");
-        Serial.print(">> [AUDIT] Energi Diselamatkan: "); Serial.print(energiDihemat_Wh, 4); Serial.println(" Wh");
-        Serial.print(">> [AUDIT] Reduksi Emisi CO2: "); Serial.print(co2Dicegah_mg, 2); Serial.println(" mg");
-        Serial.println("-------------------------------------------------");
-
-        if (app.ready()) {
-          Database.set<float>(async_client, "ruangan_01/energi_dihemat_wh", totalEnergiDiselamatkan_Wh);
-          Database.set<float>(async_client, "ruangan_01/co2_dicegah_mg", totalCO2Dicegah_mg);
-        }
-
-        waktuMulaiMati = 0;
-      }
-      statusLampuSebelumnya = true;
+      Serial.println("------------------------------------------------");
+      Serial.print  ("  Mati selama    : ");
+      Serial.print  (durasi_ms / 1000);
+      Serial.println(" detik");
+      Serial.print  ("  Energi dihemat : ");
+      Serial.print  (energi_Wh, 4);
+      Serial.println(" Wh");
+      Serial.print  ("  Reduksi CO2    : ");
+      Serial.print  (co2_mg, 2);
+      Serial.println(" mg");
+      Serial.println("------------------------------------------------");
+      waktuMulaiMati = 0;
     }
+
+    Serial.println("[STATUS] Orang Terdeteksi. Lampu Menyala.");
+    Serial.println("------------------------------------------------");
+
+    pushKeFirebase();
   }
-  else {
+
+  // ── KONDISI MATI: LOW stabil >= 20x (~1 detik) ──
+  if (hitungLow >= THRESHOLD_KOSONG && lampuNyala) {
     digitalWrite(PIN_RELAY, HIGH);
+    lampuNyala     = false;
+    waktuMulaiMati = sekarang;
+    hitungHigh     = 0;
 
-    if (statusLampuSebelumnya == true) {
-      Serial.println("\n[STATUS] Kosong (1 Detik). Lampu Dimatikan Otomatis.");
+    Serial.println("[STATUS] Kosong (1 Detik). Lampu Dimatikan.");
+    Serial.println("------------------------------------------------");
 
-      if (app.ready()) {
-        Database.set<bool>(async_client, "ruangan_01/status_lampu", false);
-        Database.set<bool>(async_client, "ruangan_01/status_radar", false);
-      }
+    pushKeFirebase();
+  }
 
-      waktuMulaiMati = millis();
-      statusLampuSebelumnya = false;
+  // ── MONITORING & UPDATE FIREBASE setiap 5 detik saat lampu mati ──
+  if (sekarang - lastUpdateFirebase >= 5000) {
+    lastUpdateFirebase = sekarang;
+
+    float totalWh = totalEnergi_Wh;
+    float totalMg = totalCO2_mg;
+
+    if (!lampuNyala && waktuMulaiMati > 0) {
+      float durasi_jam     = (sekarang - waktuMulaiMati) / 3600000.0;
+      float energiBerjalan = DAYA_LAMPU_WATT * durasi_jam;
+      float co2Berjalan    = (energiBerjalan / 1000.0) * FAKTOR_EMISI_GRID * 1000000.0;
+      totalWh += energiBerjalan;
+      totalMg += co2Berjalan;
     }
 
-    if (millis() - lastUpdateFirebase >= 5000) {
-      lastUpdateFirebase = millis();
+    Serial.print("[MONITORING] Energi Hemat: ");
+    Serial.print(totalWh, 4);
+    Serial.print(" Wh | CO2 Dicegah: ");
+    Serial.print(totalMg, 2);
+    Serial.println(" mg");
 
-      unsigned long berjalanMati_ms = millis() - waktuMulaiMati;
-      float berjalanMati_jam = (float)berjalanMati_ms / 3600000.0;
-
-      float energiBerjalan_Wh = DAYA_LAMPU_WATT * berjalanMati_jam;
-      float co2Berjalan_mg = (energiBerjalan_Wh / 1000.0) * FAKTOR_EMISI_GRID * 1000000.0;
-
-      float totalWh = totalEnergiDiselamatkan_Wh + energiBerjalan_Wh;
-      float totalMg = totalCO2Dicegah_mg + co2Berjalan_mg;
-
-      Serial.print("[MONITOR] Total Energi: ");
-      Serial.print(totalWh, 4); Serial.print(" Wh | Total CO2: ");
-      Serial.print(totalMg, 2); Serial.println(" mg");
-
-      if (app.ready()) {
-        Database.set<float>(async_client, "ruangan_01/energi_dihemat_wh", totalWh);
-        Database.set<float>(async_client, "ruangan_01/co2_dicegah_mg", totalMg);
-      }
-    }
+    pushKeFirebase();
   }
 
   delay(50);

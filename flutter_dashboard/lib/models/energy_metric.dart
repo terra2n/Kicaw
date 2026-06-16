@@ -15,6 +15,6 @@ class EnergyMetric {
     whSaved: 0,
     co2Mg: 0,
     minutesOff: 0,
-    lampPowerW: 10,
+    lampPowerW: 3,
   );
 }

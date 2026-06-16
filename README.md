@@ -14,13 +14,14 @@ Prototipe Otomatisasi Lampu Ruangan Berbasis ESP32 untuk Memantau Emisi Karbon S
 ```
 +-------------+          +------------------+          +------------------+
 |   ESP32     |  WiFi    |  Firebase        |  Stream  |  Flutter         |
-|  + PIR      |--------->|  Realtime DB     |<---------|  Dashboard       |
+|  + Radar    |--------->|  Realtime DB     |<---------|  Dashboard       |
 |  + Relay    |  HTTPS   |  (Cloud)         |  onValue |  (Mobile/Web)    |
 +-------------+          +------------------+          +------------------+
-     |                           |
-     | Sensor PIR mendeteksi     | Data: status_lampu,
-     | gerakan → relay ON/OFF    | energi_dihemat_wh,
-     | Kalkulasi emisi CO2       | co2_dicegah_mg
+      |                           |
+      | Sensor Radar mendeteksi   | Data: status_lampu,
+      | gerakan dalam <75cm       | energi_dihemat_wh,
+      | → relay ON/OFF            | co2_dicegah_mg
+      | Kalkulasi emisi CO2       |
 ```
 
 ## Struktur Repositori
@@ -44,19 +45,27 @@ Prototipe Otomatisasi Lampu Ruangan Berbasis ESP32 untuk Memantau Emisi Karbon S
 | Komponen | Spesifikasi | Keterangan |
 |----------|-------------|------------|
 | ESP32 | Dev Board (30/38 pin) | Microcontroller dengan WiFi |
-| Sensor PIR HC-SR501 | 5V, output digital | Deteksi gerakan |
+| Sensor Radar HLK-LD2410C | 5V, UART + digital OUT | Deteksi gerakan (gate < 75cm) |
 | Relay Module | 1-channel 5V | Kontrol lampu |
-| Lampu LED | 10W (simulasi) | Beban yang dikontrol |
+| Lampu LED | 3W (simulasi) | Beban yang dikontrol |
 | Kabel Jumper | Male-Female / Male-Male | Koneksi komponen |
 
 ### Wiring
 
 | Pin ESP32 | Terhubung ke |
 |-----------|-------------|
-| GPIO 14 | OUT Sensor PIR |
+| GPIO 14 | OUT Sensor Radar |
+| GPIO 16 | RX (UART) Sensor Radar |
+| GPIO 17 | TX (UART) Sensor Radar |
 | GPIO 27 | IN Relay Module |
-| 5V / 3.3V | VCC Sensor PIR & Relay |
-| GND | GND Sensor PIR & Relay |
+| 5V / 3.3V | VCC Sensor Radar & Relay |
+| GND | GND Sensor Radar & Relay |
+
+### Logika Deteksi
+
+Sistem menggunakan **threshold counter** dengan delay loop 50ms:
+- **HIGH stabil ≥10x** (~0.5 detik) → lampu menyala
+- **LOW stabil ≥20x** (~1.0 detik) → lampu mati
 
 ## Setup Firebase
 
@@ -118,7 +127,7 @@ Perhitungan emisi CO2 yang dicegah berdasarkan jurnal Singh & Dhanekar (2026):
 
 | Parameter | Nilai | Satuan |
 |-----------|-------|--------|
-| Daya lampu simulasi | 10 | Watt |
+| Daya lampu simulasi | 3 | Watt |
 | Faktor emisi grid | 0.85 | kg CO2/kWh |
 | Energi dihemat | `P × t` | Wh |
 | CO2 dicegah | `(Wh / 1000) × 0.85 × 1.000.000` | mg |

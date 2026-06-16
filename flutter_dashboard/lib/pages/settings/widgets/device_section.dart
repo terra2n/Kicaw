@@ -22,6 +22,15 @@ class DeviceSection extends StatelessWidget {
           _row(context, 'Room ID', 'ruangan_01'),
           _row(context, 'Sensor', 'HLK-LD2410C (Gate0 <75cm)'),
           _row(context, 'Timeout', '1 second'),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: () => Navigator.pushNamed(context, '/radar'),
+              icon: const Icon(Icons.radar, size: 18),
+              label: const Text('Radar Configuration'),
+            ),
+          ),
         ],
       ),
     );
