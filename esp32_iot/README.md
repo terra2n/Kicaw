@@ -26,6 +26,21 @@ Firmware ESP32 untuk monitoring ruangan pintar dengan sensor radar HLK-LD2410C, 
 
 ## 📐 Wiring Diagram
 
+### Visual Diagram
+
+> **📸 Tambahkan gambar rangkaian Anda di sini:**
+> 
+> Letakkan file gambar di folder `assets/` lalu uncomment salah satu baris di bawah:
+
+```markdown
+<!-- Uncomment setelah menambahkan gambar -->
+<!-- ![Wiring Diagram](assets/wiring_diagram.png) -->
+<!-- ![Breadboard Layout](assets/breadboard_layout.png) -->
+<!-- ![Assembled Hardware](assets/assembled_hardware.jpg) -->
+```
+
+### ASCII Diagram (Text-Based)
+
 ```
 ESP32                    HLK-LD2410C Radar
 ┌──────────┐            ┌───────────────┐
