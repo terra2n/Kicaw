@@ -28,17 +28,24 @@ Prototipe Otomatisasi Lampu Ruangan Berbasis ESP32 untuk Memantau Emisi Karbon S
 
 ```
 ├── esp32_iot/              # Firmware ESP32 (Arduino C++)
-│   └── esp32_iot.ino       # Source code utama
+│   ├── esp32_iot.ino       # Source code utama
+│   └── README.md           # 📘 Dokumentasi hardware & firmware
 ├── flutter_dashboard/      # Aplikasi dashboard (Flutter)
-│   └── lib/
-│       ├── main.dart
-│       └── firebase_options.dart
+│   ├── lib/
+│   │   ├── main.dart
+│   │   └── firebase_options.dart
+│   └── README.md           # 📗 Dokumentasi Flutter app
 ├── .github/workflows/      # GitHub Actions CI
 ├── .gitignore
 ├── .gitattributes
 ├── LICENSE
-└── README.md
+└── README.md               # 📖 Dokumentasi utama (ini)
 ```
+
+### 📚 Dokumentasi Lengkap
+
+- **[ESP32 IoT Documentation](esp32_iot/README.md)** - Hardware wiring, pin configuration, Firebase setup, dan troubleshooting
+- **[Flutter Dashboard Documentation](flutter_dashboard/README.md)** - App features, installation guide, dan API reference
 
 ## Kebutuhan Hardware
 
@@ -88,6 +95,10 @@ Project Firebase sudah dibuat: **`kicaw-smart-room`**
 
 ## Setup ESP32 (Arduino IDE)
 
+**📘 Dokumentasi lengkap: [ESP32 IoT README](esp32_iot/README.md)**
+
+### Quick Start
+
 1. Buka `esp32_iot/esp32_iot.ino` di **Arduino IDE**
 2. Install library **Firebase ESP32 Client** oleh Mobizt via Library Manager
 3. Ubah kredensial WiFi sesuai jaringan Anda:
@@ -100,7 +111,13 @@ Project Firebase sudah dibuat: **`kicaw-smart-room`**
 4. Upload ke ESP32
 5. Buka **Serial Monitor** (115200 baud) untuk melihat status koneksi
 
+> **Perlu panduan lengkap?** Lihat [dokumentasi ESP32 lengkap](esp32_iot/README.md) untuk wiring diagram, troubleshooting, dan konfigurasi lanjutan.
+
 ## Setup Flutter Dashboard
+
+**📗 Dokumentasi lengkap: [Flutter Dashboard README](flutter_dashboard/README.md)**
+
+### Quick Start
 
 ### Prasyarat
 - Flutter SDK (>=3.0)
@@ -120,6 +137,8 @@ flutter run
 > dart pub global activate flutterfire_cli
 > flutterfire configure --project=kicaw-smart-room
 > ```
+
+> **Perlu panduan lengkap?** Lihat [dokumentasi Flutter lengkap](flutter_dashboard/README.md) untuk architecture, features, dan development guide.
 
 ## Parameter Emisi
 
