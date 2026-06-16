@@ -12,8 +12,7 @@
 // =========================================================================
 const int PIN_RADAR    = 14;   // OUT Sensor Radar -> GPIO 14 (digital)
 const int PIN_RELAY    = 27;   // IN1 Relay -> GPIO 27
-const int PIN_RADAR_RX = 16;   // UART RX Radar -> GPIO 16
-const int PIN_RADAR_TX = 17;   // UART TX Radar -> GPIO 17
+// PIN_RADAR_RX dan PIN_RADAR_TX didefinisikan di ld2410_uart.h
 
 // =========================================================================
 // 2. KUNCI JARAK RADAR (GATE 0 = Radius < 75 cm)
@@ -53,12 +52,40 @@ unsigned long lastUpdateFirebase = 0;
 // =========================================================================
 // 6. OBJEK FIREBASE
 // =========================================================================
+bool firebaseReady = false;
+unsigned long lastWiFiRetry = 0;
+const unsigned long WIFI_RETRY_INTERVAL_MS = 15000;
 NoAuth noAuth;
 FirebaseApp app;
 WiFiClientSecure ssl_client;
 using AsyncClient = AsyncClientClass;
 AsyncClient async_client(ssl_client);
 RealtimeDatabase Database;
+
+void onWiFiEvent(WiFiEvent_t event) {
+  switch (event) {
+    case ARDUINO_EVENT_WIFI_READY:
+      Serial.println("[WIFI] READY");
+      break;
+    case ARDUINO_EVENT_WIFI_STA_START:
+      Serial.println("[WIFI] STA START");
+      break;
+    case ARDUINO_EVENT_WIFI_STA_CONNECTED:
+      Serial.println("[WIFI] CONNECTED TO AP");
+      break;
+    case ARDUINO_EVENT_WIFI_STA_GOT_IP:
+      Serial.print("[WIFI] GOT IP: ");
+      Serial.println(WiFi.localIP());
+      break;
+    case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
+      Serial.println("[WIFI] DISCONNECTED");
+      break;
+    default:
+      Serial.print("[WIFI] EVENT: ");
+      Serial.println((int)event);
+      break;
+  }
+}
 
 // =========================================================================
 // FUNGSI: Konfigurasi jarak radar HLK-LD2410C via UART
@@ -110,11 +137,110 @@ void pushKeFirebase() {
 }
 
 // =========================================================================
+// FUNGSI: Sambung WiFi dengan timeout
+// =========================================================================
+bool connectWiFi(unsigned long timeoutMs = 15000) {
+  if (WiFi.status() == WL_CONNECTED) return true;
+
+  WiFi.disconnect(true, true);
+  delay(100);
+  WiFi.mode(WIFI_STA);
+  WiFi.setSleep(false);
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+
+  Serial.print("Menghubungkan ke Wi-Fi");
+  unsigned long start = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - start < timeoutMs) {
+    Serial.print(".");
+    delay(300);
+  }
+  Serial.println();
+
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.print("Terhubung! IP: ");
+    Serial.println(WiFi.localIP());
+    Serial.print("[WIFI] SSID: ");
+    Serial.println(WiFi.SSID());
+    Serial.print("[WIFI] BSSID: ");
+    Serial.println(WiFi.BSSIDstr());
+    Serial.print("[WIFI] Channel: ");
+    Serial.println(WiFi.channel());
+    Serial.print("[WIFI] RSSI: ");
+    Serial.println(WiFi.RSSI());
+    return true;
+  }
+
+  wl_status_t status = WiFi.status();
+  Serial.print("[WARN] WiFi gagal connect. Status: ");
+  Serial.println((int)status);
+
+  int networks = WiFi.scanNetworks();
+  bool found = false;
+  for (int i = 0; i < networks; i++) {
+    if (WiFi.SSID(i) == WIFI_SSID) {
+      found = true;
+      Serial.print("[INFO] SSID ditemukan di scan: ");
+      Serial.print(WiFi.SSID(i));
+      Serial.print(" | RSSI: ");
+      Serial.println(WiFi.RSSI(i));
+      break;
+    }
+  }
+
+  if (!found) {
+    Serial.println("[INFO] SSID hotspot tidak terdeteksi saat scan.");
+    Serial.println("[HINT] Nama hotspot tidak muncul atau bukan 2.4GHz.");
+  } else {
+    Serial.println("[HINT] SSID terlihat, tapi koneksi gagal.");
+    Serial.println("[HINT] Kemungkinan password salah atau security mode tidak cocok.");
+  }
+
+  if (status == WL_CONNECT_FAILED) {
+    Serial.println("[ERROR] Password/auth failed.");
+  } else if (status == WL_NO_SSID_AVAIL) {
+    Serial.println("[ERROR] SSID not available.");
+  } else {
+    Serial.println("[ERROR] Unknown WiFi issue.");
+  }
+
+  WiFi.scanDelete();
+
+  Serial.println("[INFO] Pastikan hotspot 2.4GHz aktif dan password benar.");
+  return false;
+}
+
+// =========================================================================
+// FUNGSI: Inisialisasi Firebase
+// =========================================================================
+bool initFirebaseServices() {
+  if (WiFi.status() != WL_CONNECTED) return false;
+  if (firebaseReady) return true;
+
+  ssl_client.setInsecure();
+  ssl_client.setConnectionTimeout(1000);
+  ssl_client.setHandshakeTimeout(5);
+
+  initializeApp(async_client, app, getAuth(noAuth));
+  app.getApp<RealtimeDatabase>(Database);
+  Database.url(DATABASE_URL);
+
+  Serial.println("Berhasil terhubung ke Firebase!");
+  Serial.println("------------------------------------------------");
+
+  setupFirebaseCommands();
+  pushKeFirebase();
+  firebaseReady = true;
+  return true;
+}
+
+// =========================================================================
 // SETUP
 // =========================================================================
 void setup() {
   Serial.begin(115200);
   delay(1000);
+
+  WiFi.onEvent(onWiFiEvent);
 
   Serial.println("================================================");
   Serial.println("  SISTEM HEMAT ENERGI OTOMATIS - KELOMPOK 5");
@@ -137,32 +263,16 @@ void setup() {
   Serial.println("------------------------------------------------");
 
   // --- Koneksi WiFi ---
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  Serial.print("Menghubungkan ke Wi-Fi");
-  while (WiFi.status() != WL_CONNECTED) {
-    Serial.print(".");
-    delay(300);
+  if (!connectWiFi()) {
+    Serial.println("[WARN] Sistem lanjut tanpa Firebase sampai WiFi tersambung.");
   }
-  Serial.println();
-  Serial.print("Terhubung! IP: ");
-  Serial.println(WiFi.localIP());
 
   // --- Koneksi Firebase ---
-  ssl_client.setInsecure();
-  ssl_client.setConnectionTimeout(1000);
-  ssl_client.setHandshakeTimeout(5);
-
-  initializeApp(async_client, app, getAuth(noAuth));
-  app.getApp<RealtimeDatabase>(Database);
-  Database.url(DATABASE_URL);
-
-  Serial.println("Berhasil terhubung ke Firebase!");
-  Serial.println("------------------------------------------------");
-
-  // Setup Firebase command listener
-  setupFirebaseCommands();
-
-  pushKeFirebase();
+  if (WiFi.status() == WL_CONNECTED) {
+    initFirebaseServices();
+  } else {
+    Serial.println("[INFO] Firebase akan dicoba lagi saat WiFi sudah connect.");
+  }
 }
 
 // =========================================================================
@@ -181,15 +291,33 @@ void setupFirebaseCommands() {
 // LOOP UTAMA
 // =========================================================================
 void loop() {
-  app.loop();
+  if (!firebaseReady) {
+    if (WiFi.status() == WL_CONNECTED) {
+      initFirebaseServices();
+    } else if (millis() - lastWiFiRetry >= WIFI_RETRY_INTERVAL_MS) {
+      lastWiFiRetry = millis();
+      Serial.println("[INFO] Retry koneksi WiFi...");
+      if (connectWiFi(10000)) {
+        initFirebaseServices();
+      }
+    }
+  }
+
+  if (firebaseReady) {
+    app.loop();
+  }
 
   unsigned long sekarang = millis();
 
   // Cek command dari Firebase (setiap 500ms)
-  cmdCheckFirebase();
+  if (firebaseReady) {
+    cmdCheckFirebase();
+  }
 
   // Engineering mode loop (setiap 1 detik)
-  cmdEngineeringLoop();
+  if (firebaseReady) {
+    cmdEngineeringLoop();
+  }
 
   int rawRadar = digitalRead(PIN_RADAR);
 

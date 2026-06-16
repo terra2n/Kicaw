@@ -65,12 +65,14 @@ ESP32                    Relay Module
 
 ## 🚀 Getting Started
 
-### 1. Install Arduino IDE & Libraries
+### 1. Install Arduino CLI & Libraries
 
-**Required Libraries** (via Library Manager):
+**Required Libraries** (via Library Manager / Arduino CLI environment):
 - **FirebaseClient** by Mobizt (v1.3.0+)
 - **WiFi** (built-in)
 - **WiFiClientSecure** (built-in)
+
+> Kalau belum ada Arduino CLI atau core ESP32, install dulu sebelum compile.
 
 ### 2. Configure WiFi & Firebase
 
@@ -142,20 +144,69 @@ Sebelum upload, pastikan:
 - ✅ Database URL sesuai dengan project Firebase Anda
 - ✅ Tidak ada typo atau kutip ganda yang hilang
 
-### 3. Upload Firmware
+### 3. Compile with Arduino CLI
 
-1. Connect ESP32 via USB
-2. Select board: **Tools** → **Board** → **ESP32 Dev Module**
-3. Select port: **Tools** → **Port** → **(your COM port)**
-4. Upload: **Sketch** → **Upload** (or Ctrl+U)
+**Pastikan Arduino CLI sudah terpasang** dan core ESP32 tersedia.
 
-### 4. Monitor Serial Output
+Compile firmware dari folder `esp32_iot/`:
 
-Open Serial Monitor (Ctrl+Shift+M) at **115200 baud** to view:
+```bash
+arduino-cli compile --fqbn esp32:esp32:esp32 esp32_iot.ino
+```
+
+Jika ingin cek core ESP32 yang terinstall:
+
+```bash
+arduino-cli core list
+```
+
+### 4. Cari Port ESP32
+
+Sambungkan ESP32 via USB lalu cari portnya:
+
+```bash
+arduino-cli board list
+```
+
+Contoh port yang muncul:
+- `/dev/ttyUSB0`
+- `/dev/ttyACM0`
+
+### 5. Upload Firmware ke ESP32
+
+Ganti `/dev/ttyUSB0` sesuai port Anda:
+
+```bash
+arduino-cli upload -p /dev/ttyUSB0 --fqbn esp32:esp32:esp32 esp32_iot.ino
+```
+
+Kalau upload sukses, firmware akan masuk ke board ESP32.
+
+### 6. Monitor Serial Output
+
+Buka serial monitor dengan baud rate 115200:
+
+```bash
+arduino-cli monitor -p /dev/ttyUSB0 -c baudrate=115200
+```
+
+Yang perlu dicek di serial monitor:
 - WiFi connection status
 - Firebase sync status
 - Radar detection events
 - Energy consumption logs
+
+### 7. Jalankan Flutter Dashboard
+
+Setelah ESP32 sukses jalan, buka dashboard Flutter:
+
+```bash
+cd ../flutter_dashboard
+flutter pub get
+flutter run
+```
+
+> **Catatan:** Jika Anda ingin pakai Arduino IDE, alurnya tetap sama: pilih board, pilih port, lalu upload. Namun panduan utama di repo ini sekarang memakai **Arduino CLI** agar lebih konsisten dan reproducible.
 
 ## 📊 Firebase Database Structure
 

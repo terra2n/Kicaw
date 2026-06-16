@@ -20,7 +20,7 @@
 // EXTERNAL VARIABLES (defined in main ino)
 // =========================================================================
 extern FirebaseApp app;
-extern AsyncClient async_client;
+extern AsyncClientClass async_client;
 extern RealtimeDatabase Database;
 
 // =========================================================================
@@ -35,18 +35,20 @@ static unsigned long lastCmdCheck = 0;
 // =========================================================================
 // FORWARD DECLARATIONS
 // =========================================================================
-void cmdUpdateStatus(const char *status, const char *errorMsg = nullptr);
+void cmdUpdateStatus(const char *status, const String &errorMsg = "");
 void cmdPushConfigResult(RadarConfig *cfg);
 void cmdPushEngData(EngData *eng);
 void cmdProcess(const String &command, const String &params);
+void cmdCheckFirebase();
+void cmdEngineeringLoop();
 
 // =========================================================================
 // UPDATE STATUS DI FIREBASE
 // =========================================================================
-void cmdUpdateStatus(const char *status, const char *errorMsg) {
+void cmdUpdateStatus(const char *status, const String &errorMsg) {
   if (!app.ready()) return;
   Database.set<String>(async_client, FB_CMD_STATUS, status);
-  if (errorMsg) {
+  if (errorMsg.length() > 0) {
     Database.set<String>(async_client, FB_CMD_ERROR, errorMsg);
   }
 }
@@ -161,5 +163,75 @@ void cmdProcess(const String &command, const String &params) {
   }
   else if (command == "set_max_gate") {
     int mGate = cmdParseIntParam(params, "moving_gate", 3);
+    int sGate = cmdParseIntParam(params, "stationary_gate", 2);
+    int timeout = cmdParseIntParam(params, "timeout", 5);
+    if (radarSetMaxGate((uint8_t)mGate, (uint8_t)sGate, (uint16_t)timeout)) {
+      delay(300);
+      if (radarBacaKonfigurasi(&cfg)) cmdPushConfigResult(&cfg);
+      cmdUpdateStatus("done");
+    } else {
+      cmdUpdateStatus("error", "Set max gate failed");
+    }
+  }
+  else {
+    cmdUpdateStatus("error", String("Unknown command: ") + command);
+  }
+
+  cmdProcessing = false;
+}
+
+// =========================================================================
+// ENGINEERING MODE LOOP
+// Panggil dari loop() setiap 1 detik saat engineeringMode=true
+// =========================================================================
+void cmdEngineeringLoop() {
+  if (!engineeringMode) return;
+
+  unsigned long now = millis();
+  if (now - lastEngPush < 1000) return;
+  lastEngPush = now;
+
+  EngData eng;
+  if (radarBacaEngData(&eng)) {
+    cmdPushEngData(&eng);
+
+    Serial.print("[ENG] Presence: ");
+    Serial.print(eng.presence_distance_cm);
+    Serial.print("cm | Moving: ");
+    Serial.print(eng.moving_distance_cm);
+    Serial.print("cm | Stationary: ");
+    Serial.print(eng.stationary_distance_cm);
+    Serial.println("cm");
+  }
+}
+
+// =========================================================================
+// CHECK COMMAND DARI FIREBASE
+// Panggil dari loop() setiap 500ms
+// =========================================================================
+void cmdCheckFirebase() {
+  if (!app.ready() || cmdProcessing) return;
+
+  static unsigned long lastPoll = 0;
+  unsigned long now = millis();
+  if (now - lastPoll < 500) return;
+  lastPoll = now;
+
+  String cmd = Database.get<String>(async_client, FB_CMD_PATH);
+  cmd.trim();
+
+  if (cmd.length() == 0 || cmd == "none") return;
+  if (cmd == lastCommand) return;
+
+  lastCommand = cmd;
+  cmdProcessing = true;
+  cmdUpdateStatus("processing");
+  Serial.print("[CMD] Received: ");
+  Serial.println(cmd);
+
+  String params = Database.get<String>(async_client, FB_CMD_PARAMS);
+  if (params.length() == 0) params = "{}";
+  cmdProcess(cmd, params);
+}
 
 #endif // FIREBASE_CMD_H

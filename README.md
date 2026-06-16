@@ -93,25 +93,45 @@ Project Firebase sudah dibuat: **`kicaw-smart-room`**
 }
 ```
 
-## Setup ESP32 (Arduino IDE)
+## Setup ESP32 (Arduino CLI)
 
 **📘 Dokumentasi lengkap: [ESP32 IoT README](esp32_iot/README.md)**
 
 ### Quick Start
 
-1. Buka `esp32_iot/esp32_iot.ino` di **Arduino IDE**
-2. Install library **Firebase ESP32 Client** oleh Mobizt via Library Manager
-3. Ubah kredensial WiFi sesuai jaringan Anda:
+1. Masuk ke folder `esp32_iot/`
+2. Copy template kredensial:
 
-```cpp
-#define WIFI_SSID "NAMA_WIFI_ANDA"
-#define WIFI_PASSWORD "PASSWORD_WIFI_ANDA"
+```bash
+cp secrets.example.h secrets.h
 ```
 
-4. Upload ke ESP32
-5. Buka **Serial Monitor** (115200 baud) untuk melihat status koneksi
+3. Edit `secrets.h` dengan WiFi dan Firebase milik Anda
+4. Compile firmware:
 
-> **Perlu panduan lengkap?** Lihat [dokumentasi ESP32 lengkap](esp32_iot/README.md) untuk wiring diagram, troubleshooting, dan konfigurasi lanjutan.
+```bash
+arduino-cli compile --fqbn esp32:esp32:esp32 esp32_iot.ino
+```
+
+5. Cari port ESP32:
+
+```bash
+arduino-cli board list
+```
+
+6. Upload ke ESP32:
+
+```bash
+arduino-cli upload -p /dev/ttyUSB0 --fqbn esp32:esp32:esp32 esp32_iot.ino
+```
+
+7. Monitor serial output:
+
+```bash
+arduino-cli monitor -p /dev/ttyUSB0 -c baudrate=115200
+```
+
+> **Perlu panduan lengkap?** Lihat [dokumentasi ESP32 lengkap](esp32_iot/README.md) untuk wiring diagram, troubleshooting, dan alur compile → upload → monitor → Flutter.
 
 ## Setup Flutter Dashboard
 
