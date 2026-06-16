@@ -87,7 +87,9 @@ class _GateSensitivityCardState extends State<GateSensitivityCard> {
                       Colors.orangeAccent, (v) {
                     setState(() => _stationary = v);
                   }),
-                  if (hasChanges) ...[n                    const SizedBox(height: 12),n                    SizedBox(
+                  if (hasChanges) ...[
+                    const SizedBox(height: 12),
+                    SizedBox(
                       width: double.infinity,
                       child: FilledButton.icon(
                         onPressed: () => widget.onApply
