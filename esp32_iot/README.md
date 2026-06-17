@@ -82,13 +82,25 @@ ESP32                    Relay Module
 
 **A. Setup Secrets File**
 
-1. **Copy file template:**
-   ```bash
-   cd esp32_iot
-   cp secrets.example.h secrets.h
-   ```
+1. **Buat file `secrets.h`** dengan text editor (Arduino IDE, VS Code, Notepad++, dll)
 
-2. **Edit `secrets.h`** dengan text editor (Arduino IDE, VS Code, Notepad++, dll)
+2. **Isi credentials** untuk WiFi, Firebase, dan Supabase:
+
+```cpp
+// WiFi
+#define WIFI_SSID "Rumah_WiFi_5G"
+#define WIFI_PASSWORD "password12345"
+
+// Firebase (jika masih pakai)
+#define API_KEY "AIzaSyXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+#define DATABASE_URL "https://your-project-id-default-rtdb.firebaseio.com"
+
+// Supabase
+#define SUPABASE_URL "https://xxxxx.supabase.co"
+#define SUPABASE_ANON_KEY "eyJhbGc..."
+```
+
+> **Catatan:** Semua credentials sekarang dalam satu file `secrets.h` (WiFi + Firebase + Supabase)
 
 **B. WiFi Credentials**
 
@@ -138,7 +150,7 @@ Edit `secrets.h`, cari bagian Firebase:
 **D. Verify Configuration**
 
 Sebelum upload, pastikan:
-- ✅ File `secrets.h` sudah dibuat (copy dari `secrets.example.h`)
+- ✅ File `secrets.h` sudah dibuat dengan semua credentials (WiFi + Firebase + Supabase)
 - ✅ WiFi SSID dan password sudah diisi
 - ✅ Firebase API Key sudah diisi (bukan yang default)
 - ✅ Database URL sesuai dengan project Firebase Anda

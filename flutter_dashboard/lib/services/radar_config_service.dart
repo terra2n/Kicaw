@@ -68,7 +68,7 @@ class RadarConfigService {
     required int moving,
     required int stationary,
   }) =>
-      sendCommand('set_single_gate', params: {
+      sendCommand('set_gate_sens', params: {
         'gate': gate,
         'moving': moving,
         'stationary': stationary,
@@ -81,7 +81,7 @@ class RadarConfigService {
       params['m${g.gate}'] = g.moving;
       params['s${g.gate}'] = g.stationary;
     }
-    await sendCommand('set_all_gates', params: params);
+    await sendCommand('set_all_gates_sens', params: params);
   }
 
   /// Aktifkan engineering mode
@@ -97,5 +97,5 @@ class RadarConfigService {
       sendCommand('factory_reset');
 
   /// Restart radar
-  Future<void> restart() => sendCommand('restart');
+  Future<void> restart() => sendCommand('restart_radar');
 }

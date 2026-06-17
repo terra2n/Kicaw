@@ -6,8 +6,8 @@
 // =========================================================================
 // PIN DEFINITION
 // =========================================================================
-#define PIN_RADAR_RX 16
-#define PIN_RADAR_TX 17
+#define PIN_RADAR_RX 17
+#define PIN_RADAR_TX 16
 #define UART_BAUD    256000
 
 // =========================================================================
@@ -57,39 +57,36 @@ struct EngData {
 };
 
 // =========================================================================
-// LOW-LEVEL: Open UART, send raw bytes, read response, close UART
+// PERSISTENT UART INSTANCE
+// =========================================================================
+static HardwareSerial RadarSerial(2);
+
+static void radarInit() {
+  RadarSerial.begin(UART_BAUD, SERIAL_8N1, PIN_RADAR_RX, PIN_RADAR_TX);
+  delay(200);
+  while (RadarSerial.available()) RadarSerial.read();
+  Serial.println("[RADAR] UART initialized (persistent)");
+}
+
+// =========================================================================
+// LOW-LEVEL: Send raw bytes and read response (uses persistent UART)
 // =========================================================================
 
-/**
- * Kirim raw bytes ke radar via UART dan baca response.
- * UART dibuka, dikirim, dibaca, lalu ditutup.
- */
 static bool radarRawCommand(const uint8_t cmd[], size_t cmdLen,
                              uint8_t resp[], size_t *respLen,
                              unsigned long timeoutMs = 500) {
-  HardwareSerial RadarSerial(2);
-  RadarSerial.begin(UART_BAUD, SERIAL_8N1, PIN_RADAR_RX, PIN_RADAR_TX);
-  delay(200);
-
-  // Flush buffer
   while (RadarSerial.available()) RadarSerial.read();
 
-  // Kirim perintah
   RadarSerial.write(cmd, cmdLen);
   RadarSerial.flush();
 
-  // Baca response
-  unsigned long start = millis();
   *respLen = 0;
+  unsigned long start = millis();
   while (millis() - start < timeoutMs && *respLen < 256) {
     if (RadarSerial.available()) {
       resp[(*respLen)++] = RadarSerial.read();
     }
   }
-
-  RadarSerial.end();
-  pinMode(PIN_RADAR_RX, INPUT);
-  pinMode(PIN_RADAR_TX, INPUT);
 
   if (*respLen >= 4) {
     Serial.print("[UART] Response "); Serial.print(*respLen); Serial.println(" bytes");
@@ -365,10 +362,6 @@ bool radarBacaEngData(EngData *data) {
   if (!data) return false;
   data->valid = false;
 
-  HardwareSerial RadarSerial(2);
-  RadarSerial.begin(UART_BAUD, SERIAL_8N1, PIN_RADAR_RX, PIN_RADAR_TX);
-  delay(30);
-
   while (RadarSerial.available()) RadarSerial.read();
 
   unsigned long start = millis();
@@ -378,10 +371,6 @@ bool radarBacaEngData(EngData *data) {
   while (millis() - start < 100 && len < sizeof(buf)) {
     if (RadarSerial.available()) buf[len++] = RadarSerial.read();
   }
-
-  RadarSerial.end();
-  pinMode(PIN_RADAR_RX, INPUT);
-  pinMode(PIN_RADAR_TX, INPUT);
 
   // Parse: FD FC FB FA [len] 00 63 00 [data...] 04 03 02 01
   for (size_t i = 0; i + 12 < len; i++) {

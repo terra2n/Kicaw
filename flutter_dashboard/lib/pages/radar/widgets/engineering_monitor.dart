@@ -35,8 +35,8 @@ class EngineeringMonitor extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
                     color: isActive
-                        ? AppColors.primary.withOpacity(0.15)
-                        : Colors.grey.withOpacity(0.15),
+                        ? AppColors.primary.withValues(alpha: 0.15)
+                        : Colors.grey.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
@@ -58,11 +58,14 @@ class EngineeringMonitor extends StatelessWidget {
                 _distanceRow(theme, 'Moving', data.movingDistanceCm, AppColors.primary),
               if (data.stationaryDistanceCm > 0)
                 _distanceRow(theme, 'Stationary', data.stationaryDistanceCm, Colors.orangeAccent),
-              const SizedBox(height: 16),
-              const Text('Energy per Gate', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-              const SizedBox(height: 8),
-              for (int g = 0; g < 9; g++)
-                _gateEnergyRow(theme, g, data.movingEnergy[g], data.stationaryEnergy[g]),
+              const SizedBox(height: 20),
+              Text('Energy per Gate',
+                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13,
+                      color: theme.textTheme.bodyMedium?.color)),
+              const SizedBox(height: 12),
+              _verticalBarChart(theme),
+              const SizedBox(height: 12),
+              _legend(theme),
             ],
           ],
         ),
@@ -89,53 +92,94 @@ class EngineeringMonitor extends StatelessWidget {
     );
   }
 
-  Widget _gateEnergyRow(ThemeData theme, int gate, int moving, int stationary) {
-    if (moving == 0 && stationary == 0) return const SizedBox.shrink();
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 3),
+  Widget _verticalBarChart(ThemeData theme) {
+    const maxBarHeight = 100.0;
+    return SizedBox(
+      height: maxBarHeight + 24,
       child: Row(
-        children: [
-          SizedBox(
-            width: 48,
-            child: Text('G$gate', style: theme.textTheme.bodySmall?.copyWith(
-              fontWeight: FontWeight.w600)),
-          ),
-          Expanded(
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(4),
-              child: Container(
-                height: 16,
-                color: AppColors.primary.withOpacity(0.1),
-                child: Row(
-                  children: [
-                    FractionallySizedBox(
-                      widthFactor: moving / 100.0,
-                      heightFactor: 1,
-                      child: Container(color: AppColors.primary.withOpacity(0.6)),
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: List.generate(9, (gate) {
+          final moving = data.movingEnergy[gate];
+          final stationary = data.stationaryEnergy[gate];
+          final total = (moving + stationary).clamp(0, 200);
+          final movingH = (moving / 100.0) * maxBarHeight;
+          final stationaryH = (stationary / 100.0) * maxBarHeight;
+          final hasEnergy = total > 0;
+
+          return Expanded(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 2),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  SizedBox(
+                    height: maxBarHeight,
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        if (hasEnergy) ...[
+                          if (stationary > 0)
+                            Container(
+                              height: stationaryH,
+                              width: double.infinity,
+                              decoration: BoxDecoration(
+                                color: Colors.orangeAccent.withValues(alpha: 0.7),
+                                borderRadius: const BorderRadius.vertical(
+                                    top: Radius.circular(3)),
+                              ),
+                            ),
+                          if (moving > 0)
+                            Container(
+                              height: movingH,
+                              width: double.infinity,
+                              decoration: BoxDecoration(
+                                color: AppColors.primary.withValues(alpha: 0.7),
+                                borderRadius: stationary > 0
+                                    ? BorderRadius.zero
+                                    : const BorderRadius.vertical(
+                                        top: Radius.circular(3)),
+                              ),
+                            ),
+                        ],
+                      ],
                     ),
-                    FractionallySizedBox(
-                      widthFactor: stationary / 100.0,
-                      heightFactor: 1,
-                      child: Container(color: Colors.orangeAccent.withOpacity(0.6)),
-                    ),
-                  ],
-                ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text('G$gate',
+                      style: TextStyle(
+                        fontSize: 9,
+                        fontWeight: hasEnergy ? FontWeight.bold : FontWeight.normal,
+                        color: hasEnergy ? theme.textTheme.bodyMedium?.color : Colors.grey,
+                      )),
+                ],
               ),
             ),
-          ),
-          const SizedBox(width: 8),
-          SizedBox(
-            width: 40,
-            child: Text('M${moving.toString().padLeft(2)}',
-                style: TextStyle(fontSize: 10, color: AppColors.primary)),
-          ),
-          SizedBox(
-            width: 40,
-            child: Text('S${stationary.toString().padLeft(2)}',
-                style: TextStyle(fontSize: 10, color: Colors.orangeAccent)),
-          ),
-        ],
+          );
+        }),
       ),
+    );
+  }
+
+  Widget _legend(ThemeData theme) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        _legendDot(AppColors.primary, 'Moving'),
+        const SizedBox(width: 16),
+        _legendDot(Colors.orangeAccent, 'Stationary'),
+      ],
+    );
+  }
+
+  Widget _legendDot(Color color, String label) {
+    return Row(
+      children: [
+        Container(width: 10, height: 10,
+            decoration: BoxDecoration(color: color.withValues(alpha: 0.7),
+                borderRadius: BorderRadius.circular(2))),
+        const SizedBox(width: 4),
+        Text(label, style: const TextStyle(fontSize: 11)),
+      ],
     );
   }
 }

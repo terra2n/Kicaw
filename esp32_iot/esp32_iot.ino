@@ -1,10 +1,16 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
+#include <esp_task_wdt.h>
+#include <Preferences.h>
+#include <time.h>
+#include <HTTPClient.h>
+#include <ArduinoJson.h>
 #define ENABLE_DATABASE
 #include <FirebaseClient.h>
-#include "secrets.h"        // WiFi & Firebase credentials
-#include "firebase_cmd.h"   // Radar configuration via Firebase
+#include "secrets.h"              // WiFi, Firebase & Supabase credentials
+#include "firebase_cmd.h"         // Radar configuration via Firebase
+#include "supabase_client.h"      // Supabase client library
 
 
 // =========================================================================
@@ -32,15 +38,16 @@ const int THRESHOLD_MASUK  = 10;
 const int THRESHOLD_KOSONG = 20;
 
 // =========================================================================
-// 4. KREDENSIAL WiFi & FIREBASE
+// 4. KREDENSIAL WiFi, FIREBASE & SUPABASE
 // =========================================================================
-// Kredensial disimpan di file secrets.h (lihat secrets.example.h)
+// Semua kredensial disimpan di file secrets.h (WiFi + Firebase + Supabase)
 // File secrets.h sudah di-gitignore untuk keamanan
 
 // =========================================================================
 // 5. VARIABEL KONTROL & TIMER INTERNAL
 // =========================================================================
 bool  lampuNyala       = false;
+bool  radarTerdeteksi  = false;
 int   hitungLow        = 0;
 int   hitungHigh       = 0;
 unsigned long waktuMulaiMati = 0;
@@ -48,19 +55,35 @@ float totalEnergi_Wh   = 0.0;
 float totalCO2_mg      = 0.0;
 
 unsigned long lastUpdateFirebase = 0;
+unsigned long lastUpdateSupabase = 0;
+const unsigned long SUPABASE_UPDATE_INTERVAL = 5000;  // 5 detik
+
+Preferences prefs;
+unsigned long lastSaveNVS = 0;
+const unsigned long NVS_SAVE_INTERVAL_MS = 60000;
 
 // =========================================================================
-// 6. OBJEK FIREBASE
+// 6. OBJEK FIREBASE & SUPABASE
 // =========================================================================
 bool firebaseReady = false;
+bool supabaseReady = false;
 unsigned long lastWiFiRetry = 0;
 const unsigned long WIFI_RETRY_INTERVAL_MS = 15000;
+unsigned long wifiRetryInterval = WIFI_RETRY_INTERVAL_MS;
+const unsigned long WIFI_CONNECT_TIMEOUT_MS = 15000;
+unsigned long wifiConnectStart = 0;
+
+enum WiFiState { WIFI_IDLE, WIFI_CONNECTING, WIFI_CONNECTED, WIFI_FAILED };
+WiFiState wifiState = WIFI_IDLE;
 NoAuth noAuth;
 FirebaseApp app;
 WiFiClientSecure ssl_client;
 using AsyncClient = AsyncClientClass;
 AsyncClient async_client(ssl_client);
 RealtimeDatabase Database;
+
+// Supabase Client - akan diinisialisasi di setup()
+SupabaseClient* supabaseClient = nullptr;
 
 void onWiFiEvent(WiFiEvent_t event) {
   switch (event) {
@@ -76,9 +99,14 @@ void onWiFiEvent(WiFiEvent_t event) {
     case ARDUINO_EVENT_WIFI_STA_GOT_IP:
       Serial.print("[WIFI] GOT IP: ");
       Serial.println(WiFi.localIP());
+      wifiState = WIFI_CONNECTED;
+      wifiRetryInterval = WIFI_RETRY_INTERVAL_MS;
       break;
     case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
       Serial.println("[WIFI] DISCONNECTED");
+      if (wifiState == WIFI_CONNECTING || wifiState == WIFI_CONNECTED) {
+        wifiState = WIFI_FAILED;
+      }
       break;
     default:
       Serial.print("[WIFI] EVENT: ");
@@ -112,14 +140,23 @@ void konfigurasiJarakRadarFisik(byte gateTerap) {
 }
 
 // =========================================================================
-// FUNGSI: Push data ke Firebase
+// FUNGSI: NTP Timestamp (WIB = UTC+7)
 // =========================================================================
-void pushKeFirebase() {
-  if (!app.ready()) return;
+String getTimestamp() {
+  time_t now = time(nullptr);
+  if (now < 100000) return "syncing";
+  struct tm *t = localtime(&now);
+  char buf[20];
+  strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", t);
+  return String(buf);
+}
 
-  // Hitung total real-time (akumulasi + durasi mati berjalan)
-  float totalWh = totalEnergi_Wh;
-  float totalMg = totalCO2_mg;
+// =========================================================================
+// FUNGSI: Hitung total energi real-time (akumulasi + durasi mati berjalan)
+// =========================================================================
+void hitungTotalEnergi(float &totalWh, float &totalMg) {
+  totalWh = totalEnergi_Wh;
+  totalMg = totalCO2_mg;
 
   if (!lampuNyala && waktuMulaiMati > 0) {
     unsigned long durasiMati_ms = millis() - waktuMulaiMati;
@@ -129,18 +166,113 @@ void pushKeFirebase() {
     totalWh += energiBerjalan_Wh;
     totalMg += co2Berjalan_mg;
   }
+}
+
+// =========================================================================
+// FUNGSI: Push data ke Firebase
+// =========================================================================
+void pushKeFirebase() {
+  if (!app.ready()) return;
+
+  float totalWh, totalMg;
+  hitungTotalEnergi(totalWh, totalMg);
+
+  uint16_t jarakCm = radarTerdeteksi
+      ? (BATAS_GERBANG_JARAK * 75 + 37) : 0;
 
   Database.set<bool>(async_client, "ruangan_01/status_lampu", lampuNyala);
-  Database.set<bool>(async_client, "ruangan_01/status_radar", lampuNyala);
+  Database.set<bool>(async_client, "ruangan_01/status_radar", radarTerdeteksi);
+  Database.set<uint16_t>(async_client, "ruangan_01/radar_distance_cm", jarakCm);
   Database.set<float>(async_client, "ruangan_01/energi_dihemat_wh", totalWh);
   Database.set<float>(async_client, "ruangan_01/co2_dicegah_mg", totalMg);
+
+  // Push waktu_mulai_mati (epoch timestamp saat lampu mati)
+  // Cloud Functions pakai ini buat hitung durasi lampu OFF
+  if (waktuMulaiMati > 0 && lampuNyala == false) {
+    // Lampu mati, push timestamp epoch
+    time_t now = time(nullptr);
+    if (now > 100000) {
+      uint32_t epochMati = (uint32_t)(now - (millis() - waktuMulaiMati) / 1000);
+      Database.set<uint32_t>(async_client, "ruangan_01/waktu_mulai_mati", epochMati);
+    }
+  } else {
+    // Lampu nyala, clear timestamp
+    Database.set<uint32_t>(async_client, "ruangan_01/waktu_mulai_mati", 0);
+  }
+
+  // Heartbeat: epoch seconds biar Flutter bisa detect kalau ESP mati
+  time_t now = time(nullptr);
+  if (now > 100000) { // NTP synced
+    Database.set<uint32_t>(async_client, "ruangan_01/last_heartbeat",
+        (uint32_t)now);
+  }
+  Database.set<String>(async_client, "ruangan_01/last_heartbeat_ts", getTimestamp());
+}
+
+// =========================================================================
+// FUNGSI: Push data ke Supabase
+// =========================================================================
+void pushKeSupabase() {
+  if (!supabaseClient) return;
+
+  float totalWh, totalMg;
+  hitungTotalEnergi(totalWh, totalMg);
+
+  uint16_t jarakCm = radarTerdeteksi ? (BATAS_GERBANG_JARAK * 75 + 37) : 0;
+
+  // Update room_status (real-time data)
+  bool success = supabaseClient->updateRoomStatus(
+    lampuNyala,
+    radarTerdeteksi,
+    totalWh,      // Menggunakan energi sebagai proxy untuk temperature (sesuaikan jika ada sensor DHT)
+    totalMg,      // Menggunakan CO2 sebagai proxy untuk humidity (sesuaikan jika ada sensor DHT)
+    jarakCm       // Menggunakan jarak radar sebagai proxy untuk CO2 ppm
+  );
+
+  if (success) {
+    Serial.println("[SUPABASE] room_status updated");
+  }
+
+  // Insert sensor log (historical data) - setiap 5 detik
+  static unsigned long lastSensorLog = 0;
+  if (millis() - lastSensorLog >= 5000) {
+    lastSensorLog = millis();
+
+    success = supabaseClient->insertSensorLog(
+      lampuNyala,
+      radarTerdeteksi,
+      totalWh,
+      totalMg,
+      jarakCm
+    );
+
+    if (success) {
+      Serial.println("[SUPABASE] sensor_log inserted");
+    }
+  }
+}
+
+// =========================================================================
+// FUNGSI: Log activity ke Supabase (motion/lamp changes)
+// =========================================================================
+void logActivitySupabase(const String& eventType, const String& description) {
+  if (!supabaseClient) return;
+
+  bool success = supabaseClient->insertActivityLog(eventType, description);
+
+  if (success) {
+    Serial.printf("[SUPABASE] Activity logged: %s\n", eventType.c_str());
+  }
 }
 
 // =========================================================================
 // FUNGSI: Sambung WiFi dengan timeout
 // =========================================================================
-bool connectWiFi(unsigned long timeoutMs = 15000) {
-  if (WiFi.status() == WL_CONNECTED) return true;
+bool connectWiFi() {
+  if (WiFi.status() == WL_CONNECTED) {
+    wifiState = WIFI_CONNECTED;
+    return true;
+  }
 
   WiFi.disconnect(true, true);
   delay(100);
@@ -148,64 +280,11 @@ bool connectWiFi(unsigned long timeoutMs = 15000) {
   WiFi.setSleep(false);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
-  Serial.print("Menghubungkan ke Wi-Fi");
-  unsigned long start = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - start < timeoutMs) {
-    Serial.print(".");
-    delay(300);
-  }
-  Serial.println();
+  wifiState = WIFI_CONNECTING;
+  wifiConnectStart = millis();
 
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.print("Terhubung! IP: ");
-    Serial.println(WiFi.localIP());
-    Serial.print("[WIFI] SSID: ");
-    Serial.println(WiFi.SSID());
-    Serial.print("[WIFI] BSSID: ");
-    Serial.println(WiFi.BSSIDstr());
-    Serial.print("[WIFI] Channel: ");
-    Serial.println(WiFi.channel());
-    Serial.print("[WIFI] RSSI: ");
-    Serial.println(WiFi.RSSI());
-    return true;
-  }
-
-  wl_status_t status = WiFi.status();
-  Serial.print("[WARN] WiFi gagal connect. Status: ");
-  Serial.println((int)status);
-
-  int networks = WiFi.scanNetworks();
-  bool found = false;
-  for (int i = 0; i < networks; i++) {
-    if (WiFi.SSID(i) == WIFI_SSID) {
-      found = true;
-      Serial.print("[INFO] SSID ditemukan di scan: ");
-      Serial.print(WiFi.SSID(i));
-      Serial.print(" | RSSI: ");
-      Serial.println(WiFi.RSSI(i));
-      break;
-    }
-  }
-
-  if (!found) {
-    Serial.println("[INFO] SSID hotspot tidak terdeteksi saat scan.");
-    Serial.println("[HINT] Nama hotspot tidak muncul atau bukan 2.4GHz.");
-  } else {
-    Serial.println("[HINT] SSID terlihat, tapi koneksi gagal.");
-    Serial.println("[HINT] Kemungkinan password salah atau security mode tidak cocok.");
-  }
-
-  if (status == WL_CONNECT_FAILED) {
-    Serial.println("[ERROR] Password/auth failed.");
-  } else if (status == WL_NO_SSID_AVAIL) {
-    Serial.println("[ERROR] SSID not available.");
-  } else {
-    Serial.println("[ERROR] Unknown WiFi issue.");
-  }
-
-  WiFi.scanDelete();
-
-  Serial.println("[INFO] Pastikan hotspot 2.4GHz aktif dan password benar.");
+  Serial.print("[WIFI] Connecting to ");
+  Serial.println(WIFI_SSID);
   return false;
 }
 
@@ -215,6 +294,9 @@ bool connectWiFi(unsigned long timeoutMs = 15000) {
 bool initFirebaseServices() {
   if (WiFi.status() != WL_CONNECTED) return false;
   if (firebaseReady) return true;
+
+  configTime(7 * 3600, 0, "pool.ntp.org", "time.google.com");
+  Serial.println("[NTP] Syncing time (WIB)...");
 
   ssl_client.setInsecure();
   ssl_client.setConnectionTimeout(1000);
@@ -234,9 +316,37 @@ bool initFirebaseServices() {
 }
 
 // =========================================================================
+// FUNGSI: Inisialisasi Supabase
+// =========================================================================
+void initSupabase() {
+  if (WiFi.status() != WL_CONNECTED) return;
+  if (supabaseClient) return;
+
+  Serial.println("[SUPABASE] Initializing client...");
+  supabaseClient = new SupabaseClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  // Test koneksi
+  if (supabaseClient->testConnection()) {
+    Serial.println("[SUPABASE] Connection successful!");
+    supabaseReady = true;
+  } else {
+    Serial.println("[SUPABASE] Connection failed!");
+    supabaseReady = false;
+  }
+}
+
+// =========================================================================
 // SETUP
 // =========================================================================
 void setup() {
+  esp_task_wdt_config_t wdt_config = {
+    .timeout_ms = 60000,
+    .idle_core_mask = 0x3,
+    .trigger_panic = true
+  };
+  esp_task_wdt_init(&wdt_config);
+  esp_task_wdt_add(NULL);
+
   Serial.begin(115200);
   delay(1000);
 
@@ -247,6 +357,7 @@ void setup() {
   Serial.println("  ESP32 + HLK-LD2410C + Firebase");
   Serial.println("================================================");
 
+  radarInit();
   konfigurasiJarakRadarFisik(BATAS_GERBANG_JARAK);
 
   pinMode(PIN_RADAR, INPUT);
@@ -258,21 +369,24 @@ void setup() {
   lampuNyala     = false;
   waktuMulaiMati = millis();
 
+  prefs.begin("energi");
+  totalEnergi_Wh = prefs.getFloat("wh", 0.0);
+  totalCO2_mg = prefs.getFloat("co2", 0.0);
+  Serial.print("  Energi tersimpan: ");
+  Serial.print(totalEnergi_Wh, 4);
+  Serial.print(" Wh | CO2: ");
+  Serial.print(totalCO2_mg, 2);
+  Serial.println(" mg");
+
   Serial.println("  Status Awal : LAMPU MATI");
   Serial.println("  Daya Lampu  : 3 Watt");
   Serial.println("------------------------------------------------");
 
-  // --- Koneksi WiFi ---
-  if (!connectWiFi()) {
-    Serial.println("[WARN] Sistem lanjut tanpa Firebase sampai WiFi tersambung.");
-  }
+  // --- Koneksi WiFi (non-blocking) ---
+  connectWiFi();
 
-  // --- Koneksi Firebase ---
-  if (WiFi.status() == WL_CONNECTED) {
-    initFirebaseServices();
-  } else {
-    Serial.println("[INFO] Firebase akan dicoba lagi saat WiFi sudah connect.");
-  }
+  // Inisialisasi Supabase (setelah WiFi terhubung)
+  initSupabase();
 }
 
 // =========================================================================
@@ -291,16 +405,40 @@ void setupFirebaseCommands() {
 // LOOP UTAMA
 // =========================================================================
 void loop() {
-  if (!firebaseReady) {
-    if (WiFi.status() == WL_CONNECTED) {
-      initFirebaseServices();
-    } else if (millis() - lastWiFiRetry >= WIFI_RETRY_INTERVAL_MS) {
-      lastWiFiRetry = millis();
-      Serial.println("[INFO] Retry koneksi WiFi...");
-      if (connectWiFi(10000)) {
+  esp_task_wdt_reset();
+
+  // ── WiFi State Machine ──
+  switch (wifiState) {
+    case WIFI_IDLE:
+      connectWiFi();
+      break;
+
+    case WIFI_CONNECTING:
+      if (millis() - wifiConnectStart >= WIFI_CONNECT_TIMEOUT_MS) {
+        Serial.println("[WIFI] Connect timeout");
+        wifiState = WIFI_FAILED;
+        lastWiFiRetry = millis();
+        wifiRetryInterval = min(wifiRetryInterval * 2, 300000UL);
+      }
+      break;
+
+    case WIFI_CONNECTED:
+      if (!firebaseReady) {
         initFirebaseServices();
       }
-    }
+      if (!supabaseReady && !supabaseClient) {
+        initSupabase();
+      }
+      break;
+
+    case WIFI_FAILED:
+      if (millis() - lastWiFiRetry >= wifiRetryInterval) {
+        Serial.print("[WIFI] Retry (interval ");
+        Serial.print(wifiRetryInterval / 1000);
+        Serial.println("s)");
+        connectWiFi();
+      }
+      break;
   }
 
   if (firebaseReady) {
@@ -338,6 +476,7 @@ void loop() {
   if (hitungHigh >= THRESHOLD_MASUK && !lampuNyala) {
     digitalWrite(PIN_RELAY, LOW);
     lampuNyala = true;
+    radarTerdeteksi = true;
     hitungLow  = 0;
 
     // Audit energi selama periode mati sebelumnya
@@ -361,18 +500,28 @@ void loop() {
       Serial.println(" mg");
       Serial.println("------------------------------------------------");
       waktuMulaiMati = 0;
+
+      prefs.putFloat("wh", totalEnergi_Wh);
+      prefs.putFloat("co2", totalCO2_mg);
+      lastSaveNVS = sekarang;
     }
 
     Serial.println("[STATUS] Orang Terdeteksi. Lampu Menyala.");
     Serial.println("------------------------------------------------");
 
     pushKeFirebase();
+
+    // Log activity ke Supabase
+    if (supabaseReady) {
+      logActivitySupabase("lamp_on", "Lampu menyala karena ada orang terdeteksi");
+    }
   }
 
   // ── KONDISI MATI: LOW stabil >= 20x (~1 detik) ──
   if (hitungLow >= THRESHOLD_KOSONG && lampuNyala) {
     digitalWrite(PIN_RELAY, HIGH);
     lampuNyala     = false;
+    radarTerdeteksi = false;
     waktuMulaiMati = sekarang;
     hitungHigh     = 0;
 
@@ -380,22 +529,19 @@ void loop() {
     Serial.println("------------------------------------------------");
 
     pushKeFirebase();
+
+    // Log activity ke Supabase
+    if (supabaseReady) {
+      logActivitySupabase("lamp_off", "Lampu dimatikan karena tidak ada orang");
+    }
   }
 
   // ── MONITORING & UPDATE FIREBASE setiap 5 detik saat lampu mati ──
   if (sekarang - lastUpdateFirebase >= 5000) {
     lastUpdateFirebase = sekarang;
 
-    float totalWh = totalEnergi_Wh;
-    float totalMg = totalCO2_mg;
-
-    if (!lampuNyala && waktuMulaiMati > 0) {
-      float durasi_jam     = (sekarang - waktuMulaiMati) / 3600000.0;
-      float energiBerjalan = DAYA_LAMPU_WATT * durasi_jam;
-      float co2Berjalan    = (energiBerjalan / 1000.0) * FAKTOR_EMISI_GRID * 1000000.0;
-      totalWh += energiBerjalan;
-      totalMg += co2Berjalan;
-    }
+    float totalWh, totalMg;
+    hitungTotalEnergi(totalWh, totalMg);
 
     Serial.print("[MONITORING] Energi Hemat: ");
     Serial.print(totalWh, 4);
@@ -404,6 +550,18 @@ void loop() {
     Serial.println(" mg");
 
     pushKeFirebase();
+
+    // Push ke Supabase setiap 5 detik
+    if (supabaseReady) {
+      pushKeSupabase();
+    }
+  }
+
+  // ── Periodic NVS save (every 60 seconds) ──
+  if (sekarang - lastSaveNVS >= NVS_SAVE_INTERVAL_MS) {
+    lastSaveNVS = sekarang;
+    prefs.putFloat("wh", totalEnergi_Wh);
+    prefs.putFloat("co2", totalCO2_mg);
   }
 
   delay(50);

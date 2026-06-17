@@ -100,14 +100,23 @@ Project Firebase sudah dibuat: **`kicaw-smart-room`**
 ### Quick Start
 
 1. Masuk ke folder `esp32_iot/`
-2. Copy template kredensial:
+2. Edit `secrets.h` dengan WiFi, Firebase, dan Supabase credentials Anda:
 
-```bash
-cp secrets.example.h secrets.h
+```cpp
+// WiFi
+#define WIFI_SSID "YOUR_WIFI_SSID"
+#define WIFI_PASSWORD "YOUR_WIFI_PASSWORD"
+
+// Firebase (jika masih pakai)
+#define API_KEY "your-firebase-api-key"
+#define DATABASE_URL "https://your-project.firebaseio.com"
+
+// Supabase
+#define SUPABASE_URL "https://xxxxx.supabase.co"
+#define SUPABASE_ANON_KEY "eyJhbGc..."
 ```
 
-3. Edit `secrets.h` dengan WiFi dan Firebase milik Anda
-4. Compile firmware:
+3. Compile firmware:
 
 ```bash
 arduino-cli compile --fqbn esp32:esp32:esp32 esp32_iot.ino

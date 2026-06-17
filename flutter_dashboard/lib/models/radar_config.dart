@@ -70,7 +70,7 @@ class RadarConfig {
     final min = map['firmware_minor'];
     final bug = map['firmware_bugfix'];
     if (maj != null && min != null) {
-      return 'v$maj.$min.${bug?.toString()?.padLeft(4, '0') ?? '0000'}';
+      return 'v$maj.$min.${(bug ?? 0).toString().padLeft(4, '0')}';
     }
     return 'Unknown';
   }
@@ -123,10 +123,15 @@ class EngineeringData {
       stationaryDistanceCm: (map['stationary_distance_cm'] ?? 0).toInt(),
       movingEnergy: movingEng,
       stationaryEnergy: stationaryEng,
-      timestamp: map['timestamp'] != null
-          ? DateTime.fromMillisecondsSinceEpoch(map['timestamp'] as int)
-          : DateTime.now(),
+      timestamp: _parseTimestamp(map['timestamp']),
     );
+  }
+
+  static DateTime _parseTimestamp(dynamic value) {
+    if (value == null) return DateTime.now();
+    if (value is int) return DateTime.fromMillisecondsSinceEpoch(value);
+    final parsed = DateTime.tryParse(value.toString());
+    return parsed ?? DateTime.now();
   }
 
   static final empty = EngineeringData(

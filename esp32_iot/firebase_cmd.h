@@ -22,6 +22,7 @@
 extern FirebaseApp app;
 extern AsyncClientClass async_client;
 extern RealtimeDatabase Database;
+extern String getTimestamp();
 
 // =========================================================================
 // STATE VARIABLES
@@ -69,8 +70,7 @@ void cmdPushConfigResult(RadarConfig *cfg) {
     Database.set<uint8_t>(async_client, gPath + "/stationary", cfg->stationary_sens[g]);
   }
 
-  // FIXED: Ditambahkan String() membungkus FB_CMD_CONFIG
-  Database.set<String>(async_client, String(FB_CMD_CONFIG) + "/last_updated", String(millis()));
+  Database.set<String>(async_client, String(FB_CMD_CONFIG) + "/last_updated", getTimestamp());
 }
 
 // =========================================================================
@@ -89,7 +89,7 @@ void cmdPushEngData(EngData *eng) {
     Database.set<uint8_t>(async_client, ePath + "/stationary", eng->stationary_energy[g]);
   }
 
-  Database.set<uint32_t>(async_client, String(FB_CMD_ENG_DATA) + "/timestamp", millis());
+  Database.set<String>(async_client, String(FB_CMD_ENG_DATA) + "/timestamp", getTimestamp());
 }
 
 // =========================================================================
@@ -173,8 +173,70 @@ void cmdProcess(const String &command, const String &params) {
       cmdUpdateStatus("error", "Set max gate failed");
     }
   }
+  else if (command == "set_gate_sens") {
+    int gate = cmdParseIntParam(params, "gate", 0);
+    int mSens = cmdParseIntParam(params, "moving", 50);
+    int sSens = cmdParseIntParam(params, "stationary", 50);
+    if (radarSetGateSensitivitas((uint8_t)gate, (uint8_t)mSens, (uint8_t)sSens)) {
+      delay(300);
+      if (radarBacaKonfigurasi(&cfg)) cmdPushConfigResult(&cfg);
+      cmdUpdateStatus("done");
+    } else {
+      cmdUpdateStatus("error", "Set gate sensitivity failed");
+    }
+  }
+  else if (command == "set_all_gates_sens") {
+    uint8_t mSens[9], sSens[9];
+    for (int g = 0; g < 9; g++) {
+      String mKey = "m" + String(g);
+      String sKey = "s" + String(g);
+      mSens[g] = (uint8_t)cmdParseIntParam(params, mKey, 50);
+      sSens[g] = (uint8_t)cmdParseIntParam(params, sKey, 50);
+    }
+    if (radarSetSemuaGateSensitivitas(mSens, sSens)) {
+      delay(300);
+      if (radarBacaKonfigurasi(&cfg)) cmdPushConfigResult(&cfg);
+      cmdUpdateStatus("done");
+    } else {
+      cmdUpdateStatus("error", "Set all gates sensitivity failed");
+    }
+  }
+  else if (command == "factory_reset") {
+    if (radarFactoryReset()) {
+      cmdUpdateStatus("done");
+    } else {
+      cmdUpdateStatus("error", "Factory reset failed");
+    }
+  }
+  else if (command == "restart_radar") {
+    if (radarRestart()) {
+      cmdUpdateStatus("done");
+    } else {
+      cmdUpdateStatus("error", "Restart failed");
+    }
+  }
+  else if (command == "engineering_on") {
+    if (radarSetEngineeringMode(true)) {
+      engineeringMode = true;
+      cmdUpdateStatus("done");
+    } else {
+      cmdUpdateStatus("error", "Engineering mode ON failed");
+    }
+  }
+  else if (command == "engineering_off") {
+    if (radarSetEngineeringMode(false)) {
+      engineeringMode = false;
+      cmdUpdateStatus("done");
+    } else {
+      cmdUpdateStatus("error", "Engineering mode OFF failed");
+    }
+  }
   else {
     cmdUpdateStatus("error", String("Unknown command: ") + command);
+  }
+
+  if (app.ready()) {
+    Database.set<String>(async_client, FB_CMD_PATH, "none");
   }
 
   cmdProcessing = false;

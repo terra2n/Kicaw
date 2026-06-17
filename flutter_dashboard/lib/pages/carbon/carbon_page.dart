@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import '../../widgets/section_header.dart';
-import '../../services/firestore_service.dart';
-import '../../models/daily_log.dart';
+import '../../services/supabase_service.dart';
+import '../../models/supabase/sensor_log.dart';
+import '../../models/supabase/daily_summary.dart';
 import '../../widgets/fade_slide.dart';
-import '../../widgets/loading_shimmer.dart';
 import '../../widgets/error_banner.dart';
 import '../../widgets/empty_state.dart';
 import 'widgets/total_co2_hero.dart';
@@ -19,73 +19,117 @@ class CarbonPage extends StatefulWidget {
 }
 
 class _CarbonPageState extends State<CarbonPage> {
-  final FirestoreService _fs = FirestoreService();
+  final SupabaseService _supa = SupabaseService();
+  List<SensorLog>? _sensorLogs;
+  List<DailySummary>? _dailySummaries;
+  bool _loading = true;
 
-  Future<void> _onRefresh() async {}
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    setState(() => _loading = true);
+    try {
+      // Load sensor logs for real-time data
+      _sensorLogs = await _supa.getSensorLogs(limit: 100);
+      // Load daily summaries for historical data
+      _dailySummaries = await _supa.getDailySummaries(days: 30);
+    } catch (e) {
+      debugPrint('Error loading carbon data: $e');
+    }
+    if (mounted) setState(() => _loading = false);
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Carbon')),
       body: RefreshIndicator(
-        onRefresh: _onRefresh,
-        child: StreamBuilder<List<DailyLog>>(
-          stream: _fs.getDailyLogs(30),
-          builder: (context, snap) {
-            final hasError = snap.hasError;
-            final hasData = snap.hasData;
-            final logs = snap.data ?? [];
-            final totalCo2Mg = logs.fold<double>(0, (sum, l) => sum + l.co2Mg);
-            final co2Values = logs.reversed.map((l) => l.co2Mg).toList();
-            final avgDailyMg = logs.isNotEmpty ? totalCo2Mg / logs.length : 0.0;
-
-            return SingleChildScrollView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const SizedBox(height: 8),
-                  const FadeSlide(index: 0, child: SectionHeader(title: 'THIS MONTH')),
-                  FadeSlide(index: 1, child: hasError
-                    ? const ErrorBanner(message: 'Carbon data unavailable')
-                    : !hasData
-                      ? const ShimmerBlock(height: 140)
-                      : TotalCo2Hero(co2Mg: totalCo2Mg)),
-                  const SizedBox(height: 24),
-                  const FadeSlide(index: 2, child: SectionHeader(title: 'REAL-WORLD EQUIVALENTS')),
-                  FadeSlide(index: 3, child: hasError
-                    ? const ErrorBanner(message: 'Equivalents unavailable')
-                    : RealWorldEquivalents(co2Grams: totalCo2Mg / 1000)),
-                  const SizedBox(height: 24),
-                  const FadeSlide(index: 4, child: SectionHeader(title: 'CO\u2082 PER DAY — LAST 30 DAYS')),
-                  FadeSlide(index: 5, child: hasError
-                    ? const ErrorBanner(message: 'Chart unavailable')
-                    : !hasData
-                      ? const ShimmerBlock(height: 140)
-                      : co2Values.isEmpty
-                        ? const EmptyState(icon: Icons.eco, title: 'No CO\u2082 data yet')
-                        : DailyCo2Chart(co2MgValues: co2Values)),
-                  const SizedBox(height: 24),
-                  const FadeSlide(index: 6, child: SectionHeader(title: 'DETAILS')),
-                  FadeSlide(index: 7, child: hasError
-                    ? const ErrorBanner(message: 'Details unavailable')
-                    : Column(children: [
-                        EmissionInfo(label: 'Average daily', value: '${avgDailyMg.toStringAsFixed(1)} mg'),
-                        const SizedBox(height: 8),
-                        const EmissionInfo(label: 'Grid factor', value: '850 g CO\u2082/kWh'),
-                        const SizedBox(height: 8),
-                        EmissionInfo(label: 'Total this month', value: '${(totalCo2Mg / 1000).toStringAsFixed(2)} g'),
-                        const SizedBox(height: 8),
-                        EmissionInfo(label: 'Lamp avoided', value: '${logs.length} on/off cycles'),
-                      ])),
-                  const SizedBox(height: 32),
-                ],
+        onRefresh: _loadData,
+        child: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(height: 8),
+                    const FadeSlide(index: 0, child: SectionHeader(title: 'THIS MONTH')),
+                    FadeSlide(index: 1, child: _dailySummaries == null || _dailySummaries!.isEmpty
+                        ? const ErrorBanner(message: 'Carbon data unavailable')
+                        : _buildTotalCo2Hero()),
+                    const SizedBox(height: 24),
+                    const FadeSlide(index: 2, child: SectionHeader(title: 'REAL-WORLD EQUIVALENTS')),
+                    FadeSlide(index: 3, child: _dailySummaries == null || _dailySummaries!.isEmpty
+                        ? const ErrorBanner(message: 'Equivalents unavailable')
+                        : _buildRealWorldEquivalents()),
+                    const SizedBox(height: 24),
+                    const FadeSlide(index: 4, child: SectionHeader(title: 'CO₂ PER DAY — LAST 30 DAYS')),
+                    FadeSlide(index: 5, child: _dailySummaries == null
+                        ? const ErrorBanner(message: 'Chart unavailable')
+                        : _dailySummaries!.isEmpty
+                            ? const EmptyState(icon: Icons.eco, title: 'No CO₂ data yet')
+                            : _buildDailyCo2Chart()),
+                    const SizedBox(height: 24),
+                    const FadeSlide(index: 6, child: SectionHeader(title: 'DETAILS')),
+                    FadeSlide(index: 7, child: _sensorLogs == null || _sensorLogs!.isEmpty
+                        ? const ErrorBanner(message: 'Details unavailable')
+                        : _buildDetails()),
+                    const SizedBox(height: 32),
+                  ],
+                ),
               ),
-            );
-          },
-        ),
       ),
     );
+  }
+
+  Widget _buildTotalCo2Hero() {
+    if (_dailySummaries == null || _dailySummaries!.isEmpty) return const SizedBox.shrink();
+
+    final totalCo2Mg = _dailySummaries!.fold<double>(0, (sum, s) => sum + (s.avgCo2Ppm ?? 0));
+    return TotalCo2Hero(co2Mg: totalCo2Mg);
+  }
+
+  Widget _buildRealWorldEquivalents() {
+    if (_dailySummaries == null || _dailySummaries!.isEmpty) return const SizedBox.shrink();
+
+    final totalCo2Mg = _dailySummaries!.fold<double>(0, (sum, s) => sum + (s.avgCo2Ppm ?? 0));
+    return RealWorldEquivalents(co2Grams: totalCo2Mg / 1000.0);
+  }
+
+  Widget _buildDailyCo2Chart() {
+    if (_dailySummaries == null || _dailySummaries!.isEmpty) return const SizedBox.shrink();
+
+    final co2MgValues = _dailySummaries!.reversed.map((s) => (s.avgCo2Ppm ?? 0).toDouble()).toList();
+    return DailyCo2Chart(co2MgValues: co2MgValues);
+  }
+
+  Widget _buildDetails() {
+    if (_sensorLogs == null || _sensorLogs!.isEmpty) return const SizedBox.shrink();
+
+    // Calculate average CO2 from recent sensor logs
+    final avgCo2 = _sensorLogs!.fold<double>(0, (sum, log) => sum + (log.co2Ppm ?? 0)) / _sensorLogs!.length;
+
+    // Calculate total CO2 this month from daily summaries
+    final totalCo2Mg = _dailySummaries != null && _dailySummaries!.isNotEmpty
+        ? _dailySummaries!.fold<double>(0, (sum, s) => sum + (s.avgCo2Ppm ?? 0))
+        : 0.0;
+
+    // Count lamp cycles from activity logs
+    final lampCycles = _sensorLogs!.where((log) => log.lampStatus == true).length;
+
+    return Column(children: [
+      EmissionInfo(label: 'Average CO₂', value: '${avgCo2.toStringAsFixed(0)} ppm'),
+      const SizedBox(height: 8),
+      const EmissionInfo(label: 'Grid factor', value: '850 g CO₂/kWh'),
+      const SizedBox(height: 8),
+      EmissionInfo(label: 'Total this month', value: '${(totalCo2Mg / 1000).toStringAsFixed(2)} mg'),
+      const SizedBox(height: 8),
+      EmissionInfo(label: 'Lamp cycles', value: '$lampCycles on/off events'),
+    ]);
   }
 }
