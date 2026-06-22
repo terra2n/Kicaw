@@ -23,6 +23,10 @@ class _RadarPageState extends State<RadarPage>
   StreamSubscription<EngineeringData>? _engSub;
   StreamSubscription<String>? _cmdStatusSub;
 
+  // Bug #11 fix: Safety timeout agar _isLoading tidak stuck selamanya
+  Timer? _loadingTimeout;
+  static const _loadingTimeoutDuration = Duration(seconds: 10);
+
   late TabController _tabController;
 
   RadarConfig _config = RadarConfig.empty;
@@ -49,6 +53,7 @@ class _RadarPageState extends State<RadarPage>
     _cmdStatusSub = _service.commandStatusStream.listen((status) {
       if (!mounted) return;
       if (status == 'done') {
+        _loadingTimeout?.cancel();  // Bug #11 fix: Cancel timeout jika berhasil
         setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -58,6 +63,7 @@ class _RadarPageState extends State<RadarPage>
           ),
         );
       } else if (status.startsWith('error')) {
+        _loadingTimeout?.cancel();  // Bug #11 fix: Cancel timeout jika error
         setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -76,19 +82,30 @@ class _RadarPageState extends State<RadarPage>
     _configSub?.cancel();
     _engSub?.cancel();
     _cmdStatusSub?.cancel();
+    _loadingTimeout?.cancel();  // Bug #11 fix: Pastikan timer dibersihkan
     _tabController.dispose();
     super.dispose();
   }
 
   // ── Commands ──
 
+  // Bug #11 fix: Mulai timeout saat loading dimulai
+  void _startLoadingTimeout() {
+    _loadingTimeout?.cancel();
+    _loadingTimeout = Timer(_loadingTimeoutDuration, () {
+      if (mounted) setState(() => _isLoading = false);
+    });
+  }
+
   Future<void> _readConfig() async {
     setState(() => _isLoading = true);
+    _startLoadingTimeout();  // Bug #11 fix: Mulai timeout
     await _service.readConfig();
   }
 
   Future<void> _readFirmware() async {
     setState(() => _isLoading = true);
+    _startLoadingTimeout();  // Bug #11 fix: Mulai timeout
     await _service.readFirmware();
   }
 
