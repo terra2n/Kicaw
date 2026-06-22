@@ -117,6 +117,11 @@ CREATE POLICY "Allow anonymous read" ON activity_logs FOR SELECT USING (true);
 CREATE POLICY "Allow anonymous insert" ON sensor_logs FOR INSERT WITH CHECK (true);
 CREATE POLICY "Allow anonymous insert" ON activity_logs FOR INSERT WITH CHECK (true);
 
+-- Policy: Allow anonymous insert for room_status
+-- PENTING: Dibutuhkan agar UPSERT (Prefer: resolution=merge-duplicates) dari ESP32 bisa jalan
+-- Tanpa ini, HTTP POST ke room_status akan gagal dengan 403 RLS Violation
+CREATE POLICY "Allow anonymous insert" ON room_status FOR INSERT WITH CHECK (true);
+
 -- Policy: Allow anonymous update for room_status
 CREATE POLICY "Allow anonymous update" ON room_status FOR UPDATE USING (true);
 
