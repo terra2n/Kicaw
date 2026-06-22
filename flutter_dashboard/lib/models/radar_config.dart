@@ -75,12 +75,14 @@ class RadarConfig {
     return 'Unknown';
   }
 
+  // Bug Radar #1 fix: default 9 gate (G0-G8), maxGate=8
+  // Sebelumnya hanya 3 gate, menyebabkan visualisasi muncul 3 busur saat offline
   static final empty = RadarConfig(
-    maxMovingGate: 2,
-    maxStationaryGate: 1,
+    maxMovingGate: 8,
+    maxStationaryGate: 8,
     inactivityTimeout: 5,
     firmwareVersion: 'Unknown',
-    gates: List.generate(3, (i) => GateSensitivity(gate: i, moving: 50, stationary: 50)),
+    gates: List.generate(9, (i) => GateSensitivity(gate: i, moving: 50, stationary: 50)),
   );
 }
 

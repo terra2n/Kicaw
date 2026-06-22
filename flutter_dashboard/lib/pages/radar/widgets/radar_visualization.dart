@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../../../theme/app_colors.dart';
 
@@ -58,6 +59,10 @@ class _RadarPainter extends CustomPainter {
     final maxRadius = size.height * 0.75;
     final gateWidth = maxRadius / 9;
 
+    // Bug Radar #2 fix: gunakan dart:math bukan Taylor approximation yang salah
+    const startAngle = -math.pi * 0.85;
+    const sweepAngle = math.pi * 0.7;
+
     // Draw background grid arcs
     final gridPaint = Paint()
       ..color = Colors.grey.withOpacity(0.15)
@@ -68,19 +73,19 @@ class _RadarPainter extends CustomPainter {
       final radius = gateWidth * i;
       canvas.drawArc(
         Rect.fromCircle(center: center, radius: radius),
-        -3.14159 * 0.85,
-        3.14159 * 0.7,
+        startAngle,
+        sweepAngle,
         false,
         gridPaint,
       );
     }
 
-    // Draw radial lines
+    // Draw radial lines — Bug Radar #2 fix: pakai math.cos/math.sin bukan extension yang salah
     for (int i = 0; i <= 6; i++) {
-      final angle = -3.14159 * 0.85 + (3.14159 * 0.7 * i / 6);
+      final angle = startAngle + (sweepAngle * i / 6);
       final endPoint = Offset(
-        center.dx + maxRadius * 0.95 * (angle.cos()),
-        center.dy + maxRadius * 0.95 * (angle.sin()),
+        center.dx + maxRadius * 0.95 * math.cos(angle),
+        center.dy + maxRadius * 0.95 * math.sin(angle),
       );
       canvas.drawLine(center, endPoint, gridPaint);
     }
@@ -103,8 +108,8 @@ class _RadarPainter extends CustomPainter {
 
         canvas.drawArc(
           Rect.fromCircle(center: center, radius: outerR),
-          -3.14159 * 0.85,
-          3.14159 * 0.7,
+          startAngle,
+          sweepAngle,
           false,
           paint,
         );
@@ -117,8 +122,8 @@ class _RadarPainter extends CustomPainter {
 
         canvas.drawArc(
           Rect.fromCircle(center: center, radius: outerR),
-          -3.14159 * 0.85,
-          3.14159 * 0.7,
+          startAngle,
+          sweepAngle,
           false,
           borderPaint,
         );
@@ -143,8 +148,8 @@ class _RadarPainter extends CustomPainter {
 
         canvas.drawArc(
           Rect.fromCircle(center: center, radius: outerR),
-          -3.14159 * 0.85,
-          3.14159 * 0.7,
+          startAngle,
+          sweepAngle,
           false,
           paint,
         );
@@ -156,8 +161,8 @@ class _RadarPainter extends CustomPainter {
 
         canvas.drawArc(
           Rect.fromCircle(center: center, radius: outerR),
-          -3.14159 * 0.85,
-          3.14159 * 0.7,
+          startAngle,
+          sweepAngle,
           false,
           borderPaint,
         );
@@ -219,31 +224,6 @@ class _RadarPainter extends CustomPainter {
         oldDelegate.maxStationaryGate != maxStationaryGate;
   }
 }
-
-extension on double {
-  double cos() => _cos(this);
-  double sin() => _sin(this);
-}
-
-double _cos(double x) {
-  // Taylor approximation for performance
-  x = x % (2 * 3.14159265);
-  double result = 1;
-  double term = 1;
-  for (int i = 1; i <= 10; i++) {
-    term *= -x * x / ((2 * i) * (2 * i + 1));
-    result += term;
-  }
-  return result;
-}
-
-double _sin(double x) {
-  x = x % (2 * 3.14159265);
-  double result = x;
-  double term = x;
-  for (int i = 1; i <= 10; i++) {
-    term *= -x * x / ((2 * i) * (2 * i + 1));
-    result += term;
-  }
-  return result;
-}
+// Bug Radar #2 fix: Hapus implementasi Taylor _cos() dan _sin() yang salah.
+// Keduanya pakai rumus yang sama (formula sin untuk keduanya!), menyebabkan
+// garis radial miring ke arah yang salah. Sekarang pakai dart:math langsung.
