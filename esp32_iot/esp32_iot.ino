@@ -215,40 +215,33 @@ void pushKeFirebase() {
 void pushKeSupabase() {
   if (!supabaseClient) return;
 
-  float totalWh, totalMg;
-  hitungTotalEnergi(totalWh, totalMg);
-
-  uint16_t jarakCm = radarTerdeteksi ? (BATAS_GERBANG_JARAK * 75 + 37) : 0;
-
-  // Update room_status (real-time data)
+  // Bug #8 fix: Kirim data yang benar sesuai kolom
+  // Hardware saat ini: Radar (motion + lamp) — belum ada sensor suhu/humidity/CO2
+  // Kirim 0.0 untuk sensor yang belum tersedia (bukan data yang salah konteks)
   bool success = supabaseClient->updateRoomStatus(
-    lampuNyala,
-    radarTerdeteksi,
-    totalWh,      // Menggunakan energi sebagai proxy untuk temperature (sesuaikan jika ada sensor DHT)
-    totalMg,      // Menggunakan CO2 sebagai proxy untuk humidity (sesuaikan jika ada sensor DHT)
-    jarakCm       // Menggunakan jarak radar sebagai proxy untuk CO2 ppm
+    lampuNyala,         // lamp_status — BENAR
+    radarTerdeteksi,    // motion_detected — BENAR
+    0.0f,               // temperature_c — sensor belum ada, kirim 0
+    0.0f,               // humidity_percent — sensor belum ada, kirim 0
+    0                   // co2_ppm — sensor belum ada, kirim 0
   );
 
   if (success) {
     Serial.println("[SUPABASE] room_status updated");
   }
 
-  // Insert sensor log (historical data) - setiap 5 detik
-  static unsigned long lastSensorLog = 0;
-  if (millis() - lastSensorLog >= 5000) {
-    lastSensorLog = millis();
+  // Insert sensor log (historical data)
+  // Bug #14 fix: Tidak ada timer ganda di sini — timing dikelola oleh loop() (setiap 5 detik)
+  success = supabaseClient->insertSensorLog(
+    lampuNyala,
+    radarTerdeteksi,
+    0.0f,    // temperature_c
+    0.0f,    // humidity_percent
+    0        // co2_ppm
+  );
 
-    success = supabaseClient->insertSensorLog(
-      lampuNyala,
-      radarTerdeteksi,
-      totalWh,
-      totalMg,
-      jarakCm
-    );
-
-    if (success) {
-      Serial.println("[SUPABASE] sensor_log inserted");
-    }
+  if (success) {
+    Serial.println("[SUPABASE] sensor_log inserted");
   }
 }
 
