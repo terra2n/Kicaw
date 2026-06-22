@@ -15,6 +15,7 @@
 #define FB_CMD_PARAMS    FB_RADAR_CFG "/command_params"
 #define FB_CMD_CONFIG    FB_RADAR_CFG "/config_data"
 #define FB_CMD_ENG_DATA  FB_RADAR_CFG "/engineering_data"
+#define FB_CMD_TS        FB_RADAR_CFG "/command_ts"
 
 // =========================================================================
 // EXTERNAL VARIABLES (defined in main ino)
@@ -28,6 +29,7 @@ extern String getTimestamp();
 // STATE VARIABLES
 // =========================================================================
 static bool cmdProcessing = false;
+static unsigned long cmdStartMs = 0;
 static bool engineeringMode = false;
 static unsigned long lastEngPush = 0;
 static String lastCommand = "";
@@ -64,7 +66,7 @@ void cmdPushConfigResult(RadarConfig *cfg) {
   Database.set<uint8_t>(async_client, String(FB_CMD_CONFIG) + "/max_stationary_gate", cfg->max_stationary_gate);
   Database.set<uint16_t>(async_client, String(FB_CMD_CONFIG) + "/inactivity_timeout", cfg->inactivity_timeout);
 
-  for (int g = 0; g <= cfg->max_moving_gate && g < 9; g++) {
+  for (int g = 0; g < 9; g++) {
     String gPath = String(FB_CMD_CONFIG) + "/gates/g" + g;
     Database.set<uint8_t>(async_client, gPath + "/moving", cfg->moving_sens[g]);
     Database.set<uint8_t>(async_client, gPath + "/stationary", cfg->stationary_sens[g]);
@@ -83,7 +85,7 @@ void cmdPushEngData(EngData *eng) {
   Database.set<uint16_t>(async_client, String(FB_CMD_ENG_DATA) + "/moving_distance_cm", eng->moving_distance_cm);
   Database.set<uint16_t>(async_client, String(FB_CMD_ENG_DATA) + "/stationary_distance_cm", eng->stationary_distance_cm);
 
-  for (int g = 0; g <= eng->moving_max_gate && g < 9; g++) {
+  for (int g = 0; g < 9; g++) {
     String ePath = String(FB_CMD_ENG_DATA) + "/energy/g" + g;
     Database.set<uint8_t>(async_client, ePath + "/moving", eng->moving_energy[g]);
     Database.set<uint8_t>(async_client, ePath + "/stationary", eng->stationary_energy[g]);
@@ -134,6 +136,7 @@ void cmdProcess(const String &command, const String &params) {
   if (command == "" || command == "none") return;
 
   cmdProcessing = true;
+  cmdStartMs = millis();
   lastCommand = command;
   cmdUpdateStatus("processing");
 
@@ -272,21 +275,47 @@ void cmdEngineeringLoop() {
 // Panggil dari loop() setiap 500ms
 // =========================================================================
 void cmdCheckFirebase() {
-  if (!app.ready() || cmdProcessing) return;
+  if (!app.ready()) return;
+
+  if (cmdProcessing) {
+    if (millis() - cmdStartMs > 15000) {
+      Serial.println("[CMD] Timeout processing command! Forcing reset.");
+      cmdProcessing = false;
+      cmdUpdateStatus("error", "Command timeout");
+    } else {
+      return;
+    }
+  }
 
   static unsigned long lastPoll = 0;
   unsigned long now = millis();
   if (now - lastPoll < 500) return;
   lastPoll = now;
 
+  static bool isFirstCheck = true;
+  static uint32_t lastCmdTs = 0;
+
+  uint32_t cmdTs = Database.get<uint32_t>(async_client, FB_CMD_TS);
+
+  if (isFirstCheck) {
+    lastCmdTs = cmdTs;
+    isFirstCheck = false;
+    return;
+  }
+
+  if (cmdTs == lastCmdTs) return;
+
   String cmd = Database.get<String>(async_client, FB_CMD_PATH);
   cmd.trim();
 
-  if (cmd.length() == 0 || cmd == "none") return;
-  if (cmd == lastCommand) return;
+  if (cmd.length() == 0 || cmd == "none") {
+    lastCmdTs = cmdTs;
+    return;
+  }
 
-  lastCommand = cmd;
+  lastCmdTs = cmdTs;
   cmdProcessing = true;
+  cmdStartMs = millis();
   cmdUpdateStatus("processing");
   Serial.print("[CMD] Received: ");
   Serial.println(cmd);

@@ -386,11 +386,14 @@ bool radarBacaEngData(EngData *data) {
           data->moving_distance_cm      = d[4] | (d[5] << 8);
           data->stationary_distance_cm  = d[6] | (d[7] << 8);
 
-          for (uint8_t g = 0; g <= data->moving_max_gate && g < 9; g++) {
+          for (uint8_t g = 0; g < 9; g++) {
             uint8_t ei = 8 + g * 2;
             if (ei + 1 < dLen) {
               data->moving_energy[g]     = d[ei];
               data->stationary_energy[g] = d[ei + 1];
+            } else {
+              data->moving_energy[g]     = 0;
+              data->stationary_energy[g] = 0;
             }
           }
           data->valid = true;
