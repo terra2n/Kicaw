@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/supabase/room_status.dart';
 import '../models/supabase/sensor_log.dart';
@@ -5,11 +6,25 @@ import '../models/supabase/daily_summary.dart';
 import '../models/supabase/activity_log.dart';
 
 class SupabaseService {
-  final SupabaseClient _client = Supabase.instance.client;
+  // Bug A fix: Gunakan getter (bukan field) agar tidak crash jika Supabase
+  // belum diinisialisasi (misalnya .env belum diisi).
+  // Akses _client ditunda sampai saat query pertama dipanggil.
+  SupabaseClient get _client => Supabase.instance.client;
+
+  // Helper: cek apakah Supabase sudah siap sebelum query
+  bool get _isReady {
+    try {
+      Supabase.instance.client;
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
 
   // ===== REALTIME: Room Status =====
 
   Future<RoomStatus?> getRoomStatus() async {
+    if (!_isReady) return null;
     try {
       final response = await _client
           .from('room_status')
@@ -19,12 +34,13 @@ class SupabaseService {
       if (response == null) return null;
       return RoomStatus.fromJson(response);
     } catch (e) {
-      print('Error getting room status: $e');
+      debugPrint('Error getting room status: $e');
       return null;
     }
   }
 
   Stream<RoomStatus?> streamRoomStatus() {
+    if (!_isReady) return Stream.value(null);
     return _client
         .from('room_status')
         .stream(primaryKey: ['id'])
@@ -39,14 +55,13 @@ class SupabaseService {
     DateTime? startTime,
     DateTime? endTime,
   }) async {
+    if (!_isReady) return [];
     try {
-      // Start with basic query
       var query = _client
           .from('sensor_logs')
           .select()
           .eq('room_name', 'ruangan_01');
 
-      // Add time filters if provided
       if (startTime != null) {
         query = query.gte('recorded_at', startTime.toIso8601String());
       }
@@ -60,19 +75,22 @@ class SupabaseService {
 
       return response.map((json) => SensorLog.fromJson(json)).toList();
     } catch (e) {
-      print('Error getting sensor logs: $e');
+      debugPrint('Error getting sensor logs: $e');
       return [];
     }
   }
 
+  // Bug #6 fix: .stream() tidak support order() pada kolom non-PK.
+  // Sorting dilakukan client-side di dalam .map() agar tidak error runtime.
   Stream<List<SensorLog>> streamSensorLogs({int limit = 100}) {
+    if (!_isReady) return Stream.value([]);
     return _client
         .from('sensor_logs')
         .stream(primaryKey: ['id'])
         .eq('room_name', 'ruangan_01')
-        .order('recorded_at', ascending: false)
         .limit(limit)
-        .map((data) => data.map((json) => SensorLog.fromJson(json)).toList());
+        .map((data) => (data.map((json) => SensorLog.fromJson(json)).toList()
+              ..sort((a, b) => b.recordedAt.compareTo(a.recordedAt))));
   }
 
   // ===== AGGREGATED: Daily Summaries =====
@@ -82,17 +100,16 @@ class SupabaseService {
     DateTime? startDate,
     DateTime? endDate,
   }) async {
+    if (!_isReady) return [];
     try {
       final from = startDate ?? DateTime.now().subtract(Duration(days: days));
 
-      // Start with basic query
       var query = _client
           .from('daily_summaries')
           .select()
           .eq('room_name', 'ruangan_01')
           .gte('date', from.toIso8601String().split('T')[0]);
 
-      // Add end date filter if provided
       if (endDate != null) {
         query = query.lte('date', endDate.toIso8601String().split('T')[0]);
       }
@@ -103,7 +120,7 @@ class SupabaseService {
 
       return response.map((json) => DailySummary.fromJson(json)).toList();
     } catch (e) {
-      print('Error getting daily summaries: $e');
+      debugPrint('Error getting daily summaries: $e');
       return [];
     }
   }
@@ -116,14 +133,13 @@ class SupabaseService {
     DateTime? startTime,
     DateTime? endTime,
   }) async {
+    if (!_isReady) return [];
     try {
-      // Start with basic query
       var query = _client
           .from('activity_logs')
           .select()
           .eq('room_name', 'ruangan_01');
 
-      // Add optional filters
       if (eventType != null) {
         query = query.eq('event_type', eventType);
       }
@@ -140,44 +156,50 @@ class SupabaseService {
 
       return response.map((json) => ActivityLog.fromJson(json)).toList();
     } catch (e) {
-      print('Error getting activity logs: $e');
+      debugPrint('Error getting activity logs: $e');
       return [];
     }
   }
 
+  // Bug #7 fix: .stream() tidak support order() pada kolom non-PK.
+  // Sorting dilakukan client-side di dalam .map() agar tidak error runtime.
   Stream<List<ActivityLog>> streamActivityLogs({int limit = 50}) {
+    if (!_isReady) return Stream.value([]);
     return _client
         .from('activity_logs')
         .stream(primaryKey: ['id'])
         .eq('room_name', 'ruangan_01')
-        .order('created_at', ascending: false)
         .limit(limit)
-        .map((data) => data.map((json) => ActivityLog.fromJson(json)).toList());
+        .map((data) => (data.map((json) => ActivityLog.fromJson(json)).toList()
+              ..sort((a, b) => b.createdAt.compareTo(a.createdAt))));
   }
 
   // ===== WRITE =====
 
   Future<bool> insertSensorLog(SensorLog log) async {
+    if (!_isReady) return false;
     try {
       await _client.from('sensor_logs').insert(log.toJson());
       return true;
     } catch (e) {
-      print('Error inserting sensor log: $e');
+      debugPrint('Error inserting sensor log: $e');
       return false;
     }
   }
 
   Future<bool> insertActivityLog(ActivityLog log) async {
+    if (!_isReady) return false;
     try {
       await _client.from('activity_logs').insert(log.toJson());
       return true;
     } catch (e) {
-      print('Error inserting activity log: $e');
+      debugPrint('Error inserting activity log: $e');
       return false;
     }
   }
 
   Future<bool> updateRoomStatus(RoomStatus status) async {
+    if (!_isReady) return false;
     try {
       await _client
           .from('room_status')
@@ -185,7 +207,7 @@ class SupabaseService {
           .eq('room_name', 'ruangan_01');
       return true;
     } catch (e) {
-      print('Error updating room status: $e');
+      debugPrint('Error updating room status: $e');
       return false;
     }
   }
