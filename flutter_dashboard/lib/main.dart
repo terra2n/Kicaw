@@ -26,12 +26,20 @@ void main() async {
   }
 
   // Initialize Supabase
+  // Bug #5 fix: Validasi credentials sebelum init agar error lebih jelas
+  // Bug #12 fix: Ganti deprecated anonKey → publishableKey
   try {
-    await Supabase.initialize(
-      url: SupabaseConfig.supabaseUrl,
-      anonKey: SupabaseConfig.supabaseAnonKey,
-    );
-    debugPrint('Supabase initialized successfully');
+    final supabaseUrl = SupabaseConfig.supabaseUrl;
+    final supabaseKey = SupabaseConfig.supabaseAnonKey;
+    if (supabaseUrl.isEmpty || supabaseKey.isEmpty) {
+      debugPrint('Supabase initialization skipped: credentials missing in .env');
+    } else {
+      await Supabase.initialize(
+        url: supabaseUrl,
+        anonKey: supabaseKey,
+      );
+      debugPrint('Supabase initialized successfully');
+    }
   } catch (e) {
     debugPrint('Supabase initialization failed: $e');
   }
