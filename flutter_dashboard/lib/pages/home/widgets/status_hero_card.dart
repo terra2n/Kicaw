@@ -23,9 +23,7 @@ class StatusHeroCard extends StatelessWidget {
     final iconColor = occupied ? Colors.amber : context.textTertiary;
     final statusText = occupied ? 'Occupied' : 'Empty';
     final subText = occupied
-        ? (status.co2Ppm != null
-            ? 'Radar detecting — ~${status.co2Ppm} cm'
-            : 'Radar detecting presence')
+        ? 'Radar detecting presence'  // Bug #9 fix: Hapus tampilan co2Ppm sebagai jarak (salah konteks)
         : 'No motion detected';
     final icon = occupied ? Icons.people_outline : Icons.night_shelter_outlined;
 
