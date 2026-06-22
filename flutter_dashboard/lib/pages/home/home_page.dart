@@ -23,6 +23,15 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   final SupabaseService _supa = SupabaseService();
 
+  // Bug #10 fix: Future diinisialisasi sekali di initState, bukan tiap build()
+  late Future<List<DailySummary>> _weeklyFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _weeklyFuture = _supa.getDailySummaries(days: 7);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -90,7 +99,10 @@ class _HomePageState extends State<HomePage> {
       ),
       body: RefreshIndicator(
         onRefresh: () async {
-          setState(() {});
+          // Bug #10 fix: Refresh juga memperbarui future weekly chart
+          setState(() {
+            _weeklyFuture = _supa.getDailySummaries(days: 7);
+          });
         },
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
@@ -143,7 +155,7 @@ class _HomePageState extends State<HomePage> {
               // LAST 7 DAYS
               const FadeSlide(index: 4, child: SectionHeader(title: 'LAST 7 DAYS')),
               FadeSlide(index: 5, child: FutureBuilder<List<DailySummary>>(
-                future: _supa.getDailySummaries(days: 7),
+                future: _weeklyFuture,  // Bug #10 fix: Pakai cached future, bukan buat baru tiap build
                 builder: (context, snap) {
                   if (snap.hasError) return const ErrorBanner(message: 'Chart data unavailable');
                   if (!snap.hasData) return const ShimmerBlock(height: 140);
