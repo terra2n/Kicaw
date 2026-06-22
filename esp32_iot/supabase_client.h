@@ -13,7 +13,8 @@ private:
     String supabaseKey;
     WiFiClientSecure* secureClient;
 
-    bool makeRequest(const char* method, const String& endpoint, const String& payload) {
+    bool makeRequest(const char* method, const String& endpoint, const String& payload,
+                     const String& prefer = "return=minimal") {
         HTTPClient http;
         String url = supabaseUrl + endpoint;
 
@@ -23,7 +24,7 @@ private:
         http.addHeader("Content-Type", "application/json");
         http.addHeader("apikey", supabaseKey);
         http.addHeader("Authorization", "Bearer " + supabaseKey);
-        http.addHeader("Prefer", "return=minimal");
+        http.addHeader("Prefer", prefer);
 
         int httpCode;
         if (strcmp(method, "POST") == 0) {
@@ -66,25 +67,30 @@ public:
     }
 
     // Update room_status table (UPSERT - create or update)
+    // Bug #1 fix: Removed "now()" string - DB handles updated_at via DEFAULT NOW()
+    // Bug #2 fix: Use Prefer: resolution=merge-duplicates header for proper UPSERT
     bool updateRoomStatus(bool lampOn, bool motionDetected, float temperature, float humidity, int co2ppm) {
         JsonDocument doc;
+        doc["id"] = 1;  // Fixed ID — tabel room_status hanya punya 1 baris
         doc["lamp_status"] = lampOn;
         doc["motion_detected"] = motionDetected;
         doc["temperature_c"] = temperature;
         doc["humidity_percent"] = humidity;
         doc["co2_ppm"] = co2ppm;
-        doc["updated_at"] = "now()";
+        // updated_at tidak perlu dikirim — PostgreSQL isi otomatis via DEFAULT NOW()
 
         String payload;
         serializeJson(doc, payload);
 
         Serial.printf("[SUPABASE] Updating room_status: %s\n", payload.c_str());
 
-        // Use UPSERT (on_conflict) to update existing record
-        return makeRequest("POST", "/rest/v1/room_status?on_conflict=id", payload);
+        // UPSERT: jika id=1 sudah ada maka UPDATE, jika belum ada maka INSERT
+        return makeRequest("POST", "/rest/v1/room_status", payload,
+                           "return=minimal,resolution=merge-duplicates");
     }
 
     // Insert sensor log (historical data)
+    // Bug #1 fix: Removed "recorded_at": "now()" — DB handles it via DEFAULT NOW()
     bool insertSensorLog(bool lampOn, bool motionDetected, float temperature, float humidity, int co2ppm) {
         JsonDocument doc;
         doc["lamp_status"] = lampOn;
@@ -92,7 +98,7 @@ public:
         doc["temperature_c"] = temperature;
         doc["humidity_percent"] = humidity;
         doc["co2_ppm"] = co2ppm;
-        doc["recorded_at"] = "now()";
+        // recorded_at tidak perlu dikirim — PostgreSQL isi otomatis via DEFAULT NOW()
 
         String payload;
         serializeJson(doc, payload);
@@ -101,11 +107,12 @@ public:
     }
 
     // Insert activity log (event)
+    // Bug #1 fix: Removed "created_at": "now()" — DB handles it via DEFAULT NOW()
     bool insertActivityLog(const String& eventType, const String& description) {
         JsonDocument doc;
         doc["event_type"] = eventType;
         doc["description"] = description;
-        doc["created_at"] = "now()";
+        // created_at tidak perlu dikirim — PostgreSQL isi otomatis via DEFAULT NOW()
 
         String payload;
         serializeJson(doc, payload);
