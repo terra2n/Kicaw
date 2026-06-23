@@ -185,64 +185,100 @@ Perhitungan emisi CO₂ berdasarkan Singh & Dhanekar (2026):
 
 ---
 
-## 🚀 Quick Start
+## 🚀 Quick Start (30 Menit)
 
-### 1. Setup Database
+### Prasyarat
 
-#### Firebase
-1. Buka [Firebase Console](https://console.firebase.google.com/project/kicaw-smart-room/overview)
-2. Aktifkan **Realtime Database** dan **Firestore**
-3. Deploy Cloud Functions:
-   ```bash
-   cd functions
-   npm install
-   npm run build
-   npm run deploy
-   ```
+| Hardware | Software |
+|----------|----------|
+| ESP32 Dev Board | Arduino IDE / Arduino CLI |
+| HLK-LD2410C Radar Sensor | Flutter SDK ≥3.0 |
+| Relay Module 1ch 5V | Akun Firebase (free) |
+| Lampu LED 3W + kabel jumper | Akun Supabase (free) |
+| USB Cable + Power Supply 5V/2A | Node.js ≥18 (untuk Cloud Functions) |
 
-#### Supabase
-1. Buka [supabase.com](https://supabase.com) → Create project (region: Singapore)
-2. Buka **SQL Editor** → paste isi `supabase/schema.sql` → Run
-3. Catat **Project URL** dan **anon public key** dari Settings → API
-4. Lihat panduan lengkap: [QUICKSTART_SUPABASE.md](QUICKSTART_SUPABASE.md)
+### 1. Setup Database (5 menit)
 
-### 2. Setup ESP32
+#### A. Firebase
+```bash
+# Buka Firebase Console, buat/aktifkan project "kicaw-smart-room"
+# Aktifkan Realtime Database & Firestore (mode test)
+
+# Deploy Cloud Functions
+cd functions
+npm install
+npm run build
+npm run deploy
+```
+
+#### B. Supabase
+```bash
+# 1. Buka https://supabase.com → New Project
+#    Name: smart-room-eco2 | Region: Singapore
+# 2. Buka SQL Editor → paste isi supabase/schema.sql → Run
+# 3. Settings → API → catat Project URL & anon public key
+```
+📖 Panduan detail: [QUICKSTART_SUPABASE.md](QUICKSTART_SUPABASE.md)
+
+### 2. Wired Hardware
+
+```
+ESP32 GPIO   →   HLK-LD2410C        Relay
+─────────────────────────────────────────
+GPIO 14      →   OUT (digital)
+GPIO 16 (RX) →   TX (UART)
+GPIO 17 (TX) →   RX (UART)
+GPIO 27      →                    IN1
+5V           →   VCC               VCC
+GND          →   GND               GND
+```
+
+> **Relay Active LOW**: `HIGH` = mati, `LOW` = nyala
+
+### 3. Setup ESP32 (10 menit)
 
 ```bash
+# 1. Install library yang diperlukan (via Arduino Library Manager):
+#    - FirebaseClient by Mobizt
+#    - ArduinoJson by Benoit Blanchon (v7)
+
+# 2. Buat & isi credentials
 cd esp32_iot
-
-# 1. Buat file secrets.h dari template
 cp secrets.h.template secrets.h
+nano secrets.h   # isi WiFi, Firebase, & Supabase
 
-# 2. Edit secrets.h — isi WiFi, Firebase, dan Supabase credentials
-
-# 3. Compile & upload
+# 3. Compile
 arduino-cli compile --fqbn esp32:esp32:esp32 esp32_iot.ino
+
+# 4. Upload
 arduino-cli upload -p /dev/ttyUSB0 --fqbn esp32:esp32:esp32 esp32_iot.ino
 
-# 4. Monitor serial
+# 5. Monitor (cek "Supabase connection: SUCCESS")
 arduino-cli monitor -p /dev/ttyUSB0 -c baudrate=115200
 ```
 
-📘 **Dokumentasi lengkap**: [ESP32 README](esp32_iot/README.md)
+📘 **Panduan lengkap wiring & troubleshooting**: [ESP32 README](esp32_iot/README.md)
 
-### 3. Setup Flutter Dashboard
+### 4. Setup Flutter Dashboard (10 menit)
 
 ```bash
 cd flutter_dashboard
-
-# 1. Konfigurasi environment
 cp .env.example .env
-# Edit .env dengan credentials Supabase & Firebase
-
-# 2. Install dependencies
+nano .env        # isi SUPABASE_URL, SUPABASE_ANON_KEY
 flutter pub get
-
-# 3. Jalankan aplikasi
 flutter run
 ```
 
-📗 **Dokumentasi lengkap**: [Flutter README](flutter_dashboard/README.md)
+📗 **Panduan lengkap fitur & arsitektur**: [Flutter README](flutter_dashboard/README.md)
+
+### 5. Verifikasi (5 menit)
+
+| Cek | Harapan |
+|-----|---------|
+| Serial Monitor ESP32 | `Supabase connection: SUCCESS`, push data tiap 5 detik |
+| Supabase Table Editor | `sensor_logs` terisi data baru |
+| Flutter Dashboard | Home page tampil status real-time |
+| Gerakan di depan sensor | Motion indicator berubah, lampu menyala |
 
 ---
 

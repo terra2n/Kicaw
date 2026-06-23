@@ -2,12 +2,15 @@
 #define LD2410_UART_H
 
 #include <Arduino.h>
+#if defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32)
+#include <esp_task_wdt.h>
+#endif
 
 // =========================================================================
 // PIN DEFINITION
 // =========================================================================
-#define PIN_RADAR_RX 17
-#define PIN_RADAR_TX 16
+#define PIN_RADAR_RX 16
+#define PIN_RADAR_TX 17
 #define UART_BAUD    256000
 
 // =========================================================================
@@ -59,7 +62,11 @@ struct EngData {
 // =========================================================================
 // PERSISTENT UART INSTANCE
 // =========================================================================
+#if defined(CONFIG_IDF_TARGET_ESP32C3)
+static HardwareSerial RadarSerial(1);
+#else
 static HardwareSerial RadarSerial(2);
+#endif
 
 static void radarInit() {
   RadarSerial.begin(UART_BAUD, SERIAL_8N1, PIN_RADAR_RX, PIN_RADAR_TX);
@@ -72,20 +79,41 @@ static void radarInit() {
 // LOW-LEVEL: Send raw bytes and read response (uses persistent UART)
 // =========================================================================
 
-// [ESP-C1 fix] Tambah parameter respBufSize agar tidak overflow buffer caller
+// [UART-FIX] Tunggu byte pertama datang, baru baca sampai inter-byte silence
+// Radar HLK-LD2410C perlu beberapa ms untuk merespons setelah menerima command
 static bool radarRawCommand(const uint8_t cmd[], size_t cmdLen,
                              uint8_t resp[], size_t respBufSize, size_t *respLen,
                              unsigned long timeoutMs = 500) {
+  // Flush sisa data di buffer sebelum kirim command
   while (RadarSerial.available()) RadarSerial.read();
+  delayMicroseconds(500);
 
   RadarSerial.write(cmd, cmdLen);
   RadarSerial.flush();
 
   *respLen = 0;
+
+  // Tahap 1: Tunggu byte pertama datang (max timeoutMs)
   unsigned long start = millis();
-  while (millis() - start < timeoutMs && *respLen < respBufSize) {
+  while (millis() - start < timeoutMs) {
+    if (RadarSerial.available()) break;
+#if defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32)
+    esp_task_wdt_reset();
+#endif
+    delay(2);
+  }
+
+  if (!RadarSerial.available()) {
+    Serial.println("[UART] No response from radar");
+    return false;
+  }
+
+  // Tahap 2: Baca semua byte sampai inter-byte silence 50ms
+  unsigned long lastByte = millis();
+  while (millis() - lastByte < 50 && *respLen < respBufSize) {
     if (RadarSerial.available()) {
       resp[(*respLen)++] = RadarSerial.read();
+      lastByte = millis();
     }
   }
 
@@ -93,8 +121,23 @@ static bool radarRawCommand(const uint8_t cmd[], size_t cmdLen,
     Serial.print("[UART] Response "); Serial.print(*respLen); Serial.println(" bytes");
     return true;
   }
-  Serial.println("[UART] No response from radar");
+  Serial.println("[UART] Response too short");
   return false;
+}
+
+// [UART-FIX] Drain semua data dari buffer radar (frame status yang mengalir terus)
+// Panggil sebelum masuk config mode agar tidak ada sampah di buffer
+static void radarDrainBuffer(unsigned long drainMs = 150) {
+  unsigned long start = millis();
+  while (millis() - start < drainMs) {
+    while (RadarSerial.available()) {
+      RadarSerial.read();
+    }
+#if defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32)
+    esp_task_wdt_reset();
+#endif
+    delay(10);
+  }
 }
 
 // =========================================================================
@@ -111,34 +154,48 @@ bool radarBacaKonfigurasi(RadarConfig *cfg) {
 
   Serial.println("[RADAR] Reading configuration...");
 
-  // Enable config mode
+  // [UART-FIX] Drain semua frame status yang sedang mengalir sebelum masuk config mode
+  radarDrainBuffer(200);
+
+  // Enable config mode — retry hingga 3x jika gagal
   uint8_t enableResp[256]; size_t enableLen = 0;
-  if (!radarRawCommand(CMD_ENABLE_CONFIG, sizeof(CMD_ENABLE_CONFIG),
-                        enableResp, sizeof(enableResp), &enableLen, 300)) {
-    Serial.println("[RADAR] Failed to enter config mode");
+  bool configModeOk = false;
+  for (int attempt = 0; attempt < 3; attempt++) {
+    enableLen = 0;
+    if (radarRawCommand(CMD_ENABLE_CONFIG, sizeof(CMD_ENABLE_CONFIG),
+                        enableResp, sizeof(enableResp), &enableLen, 500)) {
+      configModeOk = true;
+      break;
+    }
+    Serial.print("[RADAR] Config mode attempt "); Serial.print(attempt + 1); Serial.println(" failed, retry...");
+    radarDrainBuffer(100);
+  }
+
+  if (!configModeOk) {
+    Serial.println("[RADAR] Failed to enter config mode after 3 attempts");
     return false;
   }
 
-  delay(100);
+  delay(50);
 
   // Send read config command
   uint8_t readResp[256]; size_t readLen = 0;
   if (!radarRawCommand(CMD_READ_CONFIG, sizeof(CMD_READ_CONFIG),
-                        readResp, sizeof(readResp), &readLen, 500)) {
+                        readResp, sizeof(readResp), &readLen, 800)) {
     Serial.println("[RADAR] Read config: no response");
     uint8_t endResp2[256]; size_t endLen2 = 0;
-    radarRawCommand(CMD_END_CONFIG, sizeof(CMD_END_CONFIG), endResp2, sizeof(endResp2), &endLen2, 200);
+    radarRawCommand(CMD_END_CONFIG, sizeof(CMD_END_CONFIG), endResp2, sizeof(endResp2), &endLen2, 300);
     return false;
   }
 
   // Send end config mode
   uint8_t endResp[256]; size_t endLen = 0;
-  radarRawCommand(CMD_END_CONFIG, sizeof(CMD_END_CONFIG), endResp, sizeof(endResp), &endLen, 200);
+  radarRawCommand(CMD_END_CONFIG, sizeof(CMD_END_CONFIG), endResp, sizeof(endResp), &endLen, 300);
 
-  // Verify response
+  // Verify response header
   if (readLen < 20 || readResp[0] != 0xFD || readResp[1] != 0xFC ||
       readResp[2] != 0xFB || readResp[3] != 0xFA) {
-    Serial.println("[RADAR] Invalid response");
+    Serial.print("[RADAR] Invalid response len="); Serial.println(readLen);
     return false;
   }
 
@@ -189,28 +246,29 @@ bool radarSetMaxGate(uint8_t movingGate, uint8_t stationaryGate,
 
   uint8_t cmd[] = {
     0xFD, 0xFC, 0xFB, 0xFA,  // header
-    0x10, 0x00,              // [ESP-H2 fix] data length = 16 (0x10), bukan 20 — tail tidak dihitung
+    0x10, 0x00,              // data length = 16
     0x60, 0x00,              // write config command
-    movingGate, 0x00,        // max moving gate + reserved
-    stationaryGate, 0x00,    // max stationary gate + reserved
+    movingGate, 0x00,        // max moving gate
+    stationaryGate, 0x00,    // max stationary gate
     (uint8_t)(timeoutDetik & 0xFF),
-    (uint8_t)((timeoutDetik >> 8) & 0xFF),  // timeout LE
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // reserved 8 bytes
-    0x04, 0x03, 0x02, 0x01   // tail
+    (uint8_t)((timeoutDetik >> 8) & 0xFF),
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x04, 0x03, 0x02, 0x01
   };
 
-  // Enable config
+  // [UART-FIX] Drain sebelum masuk config mode
+  radarDrainBuffer(150);
+
   uint8_t enableResp[256]; size_t enableLen = 0;
   radarRawCommand(CMD_ENABLE_CONFIG, sizeof(CMD_ENABLE_CONFIG),
-                  enableResp, sizeof(enableResp), &enableLen, 300);
-  delay(100);
+                  enableResp, sizeof(enableResp), &enableLen, 500);
+  delay(50);
 
-  // Send write
   uint8_t writeResp[256]; size_t writeLen = 0;
-  bool ok = radarRawCommand(cmd, sizeof(cmd), writeResp, sizeof(writeResp), &writeLen, 500);
+  bool ok = radarRawCommand(cmd, sizeof(cmd), writeResp, sizeof(writeResp), &writeLen, 800);
 
   uint8_t endResp[256]; size_t endLen = 0;
-  radarRawCommand(CMD_END_CONFIG, sizeof(CMD_END_CONFIG), endResp, sizeof(endResp), &endLen, 200);
+  radarRawCommand(CMD_END_CONFIG, sizeof(CMD_END_CONFIG), endResp, sizeof(endResp), &endLen, 300);
 
   if (ok && writeLen >= 10 && writeResp[6] == 0x60 && writeResp[8] == 0x00) {
     Serial.println("[RADAR] Max gate set successfully");
@@ -235,23 +293,26 @@ bool radarSetGateSensitivitas(uint8_t gate, uint8_t movingSens,
   Serial.print(" S="); Serial.println(stationarySens);
 
   uint8_t cmd[] = {
-    0xFD, 0xFC, 0xFB, 0xFA,  // header
-    0x06, 0x00,              // data length = 6
-    0x60, 0x00,              // write config
-    gate, movingSens, stationarySens, 0x00,  // gate data + reserved
-    0x04, 0x03, 0x02, 0x01   // tail
+    0xFD, 0xFC, 0xFB, 0xFA,
+    0x06, 0x00,
+    0x60, 0x00,
+    gate, movingSens, stationarySens, 0x00,
+    0x04, 0x03, 0x02, 0x01
   };
+
+  // [UART-FIX] Drain sebelum masuk config mode
+  radarDrainBuffer(150);
 
   uint8_t enableResp[256]; size_t enableLen = 0;
   radarRawCommand(CMD_ENABLE_CONFIG, sizeof(CMD_ENABLE_CONFIG),
-                  enableResp, sizeof(enableResp), &enableLen, 300);
-  delay(100);
+                  enableResp, sizeof(enableResp), &enableLen, 500);
+  delay(50);
 
   uint8_t writeResp[256]; size_t writeLen = 0;
-  bool ok = radarRawCommand(cmd, sizeof(cmd), writeResp, sizeof(writeResp), &writeLen, 500);
+  bool ok = radarRawCommand(cmd, sizeof(cmd), writeResp, sizeof(writeResp), &writeLen, 800);
 
   uint8_t endResp[256]; size_t endLen = 0;
-  radarRawCommand(CMD_END_CONFIG, sizeof(CMD_END_CONFIG), endResp, sizeof(endResp), &endLen, 200);
+  radarRawCommand(CMD_END_CONFIG, sizeof(CMD_END_CONFIG), endResp, sizeof(endResp), &endLen, 300);
 
   if (ok && writeLen >= 10 && writeResp[6] == 0x60 && writeResp[8] == 0x00) {
     Serial.println("[RADAR] Sensitivity set OK");
@@ -287,16 +348,19 @@ bool radarSetSemuaGateSensitivitas(const uint8_t movingSens[9],
 
   cmd[idx++] = 0x04; cmd[idx++] = 0x03; cmd[idx++] = 0x02; cmd[idx++] = 0x01;
 
+  // [UART-FIX] Drain sebelum masuk config mode
+  radarDrainBuffer(150);
+
   uint8_t enableResp[256]; size_t enableLen = 0;
   radarRawCommand(CMD_ENABLE_CONFIG, sizeof(CMD_ENABLE_CONFIG),
-                  enableResp, sizeof(enableResp), &enableLen, 300);
-  delay(150);
+                  enableResp, sizeof(enableResp), &enableLen, 500);
+  delay(100);
 
   uint8_t writeResp[256]; size_t writeLen = 0;
-  bool ok = radarRawCommand(cmd, idx, writeResp, sizeof(writeResp), &writeLen, 500);
+  bool ok = radarRawCommand(cmd, idx, writeResp, sizeof(writeResp), &writeLen, 800);
 
   uint8_t endResp[256]; size_t endLen = 0;
-  radarRawCommand(CMD_END_CONFIG, sizeof(CMD_END_CONFIG), endResp, sizeof(endResp), &endLen, 200);
+  radarRawCommand(CMD_END_CONFIG, sizeof(CMD_END_CONFIG), endResp, sizeof(endResp), &endLen, 300);
 
   if (ok && writeLen >= 10 && writeResp[6] == 0x60 && writeResp[8] == 0x00) {
     Serial.println("[RADAR] All gates configured OK");

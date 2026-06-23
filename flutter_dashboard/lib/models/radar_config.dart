@@ -21,6 +21,17 @@ class GateSensitivity {
     'moving': moving,
     'stationary': stationary,
   };
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is GateSensitivity &&
+      gate == other.gate &&
+      moving == other.moving &&
+      stationary == other.stationary;
+
+  @override
+  int get hashCode => Object.hash(gate, moving, stationary);
 }
 
 class RadarConfig {
@@ -75,14 +86,13 @@ class RadarConfig {
     return 'Unknown';
   }
 
-  // Bug Radar #1 fix: default 9 gate (G0-G8), maxGate=8
-  // Sebelumnya hanya 3 gate, menyebabkan visualisasi muncul 3 busur saat offline
+  // Empty state: gates kosong, maxGate=0 agar visualisasi offline tidak misleading
   static final empty = RadarConfig(
-    maxMovingGate: 8,
-    maxStationaryGate: 8,
-    inactivityTimeout: 5,
+    maxMovingGate: 0,
+    maxStationaryGate: 0,
+    inactivityTimeout: 0,
     firmwareVersion: 'Unknown',
-    gates: List.generate(9, (i) => GateSensitivity(gate: i, moving: 50, stationary: 50)),
+    gates: const [],
   );
 }
 

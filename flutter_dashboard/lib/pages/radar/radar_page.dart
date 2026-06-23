@@ -55,6 +55,9 @@ class _RadarPageState extends State<RadarPage>
       if (status == 'done') {
         _loadingTimeout?.cancel();  // Bug #11 fix: Cancel timeout jika berhasil
         setState(() => _isLoading = false);
+        // Sync engineering state berdasarkan command terakhir
+        if (lastCommand == 'engineering_on') setState(() => _isEngActive = true);
+        if (lastCommand == 'engineering_off') setState(() => _isEngActive = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: const Text('Command completed'),
@@ -89,6 +92,9 @@ class _RadarPageState extends State<RadarPage>
 
   // ── Commands ──
 
+  // Track perintah terakhir untuk sinkronisasi state engineering
+  String lastCommand = '';
+
   // Bug #11 fix: Mulai timeout saat loading dimulai
   void _startLoadingTimeout() {
     _loadingTimeout?.cancel();
@@ -97,41 +103,33 @@ class _RadarPageState extends State<RadarPage>
     });
   }
 
-  Future<void> _readConfig() async {
+  Future<void> _sendCommand(String command, {Map<String, dynamic>? params}) async {
     setState(() => _isLoading = true);
-    _startLoadingTimeout();  // Bug #11 fix: Mulai timeout
-    await _service.readConfig();
+    lastCommand = command;
+    _startLoadingTimeout();
+    await _service.sendCommand(command, params: params);
+  }
+
+  Future<void> _readConfig() async {
+    await _sendCommand('read_config');
   }
 
   Future<void> _readFirmware() async {
-    setState(() => _isLoading = true);
-    _startLoadingTimeout();  // Bug #11 fix: Mulai timeout
-    await _service.readFirmware();
+    await _sendCommand('read_firmware');
   }
 
   Future<void> _toggleEngineering() async {
+    // Toggle state hanya dikonfirmasi setelah cmdStatusSub menerima 'done'
     if (_isEngActive) {
-      await _service.stopEngineeringMode();
+      await _sendCommand('engineering_off');
     } else {
-      await _service.startEngineeringMode();
+      await _sendCommand('engineering_on');
     }
-    setState(() => _isEngActive = !_isEngActive);
   }
 
   Future<void> _applyGate(int gate, int moving, int stationary) async {
-    await _service.setSingleGateSensitivity(
-      gate: gate,
-      moving: moving,
-      stationary: stationary,
-    );
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Gate $gate: M$moving S$stationary applied'),
-          duration: const Duration(seconds: 2),
-        ),
-      );
-    }
+    await _sendCommand('set_gate_sens',
+        params: {'gate': gate, 'moving': moving, 'stationary': stationary});
   }
 
   Future<void> _factoryReset() async {
@@ -466,10 +464,12 @@ class _RadarPageState extends State<RadarPage>
   }
 
   Widget _statusBadge() {
+    // Gunakan gates.isNotEmpty sebagai indikator data sudah diterima dari Firebase
+    final isConfigLoaded = _config.gates.isNotEmpty;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: _config.firmwareVersion != 'Unknown'
+        color: isConfigLoaded
             ? Colors.green.withOpacity(0.12)
             : Colors.grey.withOpacity(0.12),
         borderRadius: BorderRadius.circular(20),
@@ -481,21 +481,17 @@ class _RadarPageState extends State<RadarPage>
             width: 6,
             height: 6,
             decoration: BoxDecoration(
-              color: _config.firmwareVersion != 'Unknown'
-                  ? Colors.green
-                  : Colors.grey,
+              color: isConfigLoaded ? Colors.green : Colors.grey,
               shape: BoxShape.circle,
             ),
           ),
           const SizedBox(width: 6),
           Text(
-            _config.firmwareVersion != 'Unknown' ? 'Connected' : 'Offline',
+            isConfigLoaded ? 'Config Loaded' : 'No Data',
             style: TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w600,
-              color: _config.firmwareVersion != 'Unknown'
-                  ? Colors.green.shade700
-                  : Colors.grey,
+              color: isConfigLoaded ? Colors.green.shade700 : Colors.grey,
             ),
           ),
         ],
@@ -834,11 +830,11 @@ class _RadarPageState extends State<RadarPage>
             FilledButton.icon(
               onPressed: () {
                 Navigator.pop(ctx);
-                _service.setMaxGate(
-                  movingGate: mGate,
-                  stationaryGate: sGate,
-                  timeoutSeconds: timeout,
-                );
+                _sendCommand('set_max_gate', params: {
+                  'moving_gate': mGate,
+                  'stationary_gate': sGate,
+                  'timeout': timeout,
+                });
               },
               icon: const Icon(Icons.check, size: 18),
               label: const Text('Apply'),
@@ -993,23 +989,13 @@ class _RadarPageState extends State<RadarPage>
   }
 
   Future<void> _applyPreset(List<int> values) async {
-    final gates = List.generate(
-      9,
-      (i) => GateSensitivity(
-        gate: i,
-        moving: values[i],
-        stationary: values[i],
-      ),
-    );
-    await _service.setAllGateSensitivities(gates);
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Preset applied to all gates'),
-          duration: const Duration(seconds: 2),
-        ),
-      );
+    // Build params m0-m8, s0-s8 sesuai format set_all_gates_sens
+    final params = <String, dynamic>{};
+    for (int i = 0; i < 9 && i < values.length; i++) {
+      params['m$i'] = values[i];
+      params['s$i'] = values[i];
     }
+    await _sendCommand('set_all_gates_sens', params: params);
   }
 
   // ── Gate List ──

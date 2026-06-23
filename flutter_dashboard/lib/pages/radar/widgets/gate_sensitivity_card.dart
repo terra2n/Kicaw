@@ -136,7 +136,8 @@ class _GateSensitivityCardState extends State<GateSensitivityCard> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text('Gate ${widget.gate.gate}', style: theme.textTheme.titleSmall),
-        Text('${rangeMin.toStringAsFixed(0)}-${rangeMax.toStringAsFixed(0)}m',
+        // Tampilkan dalam cm agar lebih presisi (Gate 0: 0-75cm, Gate 1: 75-150cm, dst)
+        Text('${(rangeMin * 100).toInt()}-${(rangeMax * 100).toInt()}cm',
             style: theme.textTheme.bodySmall),
       ],
     );

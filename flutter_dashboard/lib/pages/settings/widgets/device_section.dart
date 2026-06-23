@@ -20,8 +20,8 @@ class DeviceSection extends StatelessWidget {
           const SizedBox(height: 8),
           _row(context, 'RTDB', 'kicaw-smart-room'),
           _row(context, 'Room ID', 'ruangan_01'),
-          _row(context, 'Sensor', 'HLK-LD2410C (Gate0 <75cm)'),
-          _row(context, 'Timeout', '1 second'),
+          _row(context, 'Sensor', 'HLK-LD2410C (default: Gate0, <75cm)'),
+          _row(context, 'Area target', '~45cm (configurable via Radar)'),
           const SizedBox(height: 12),
           SizedBox(
             width: double.infinity,

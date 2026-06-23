@@ -40,7 +40,7 @@ class RadarConfigService {
       {Map<String, dynamic>? params}) async {
     await _ref.child('command').set(command);
     await _ref.child('command_params').set(params ?? {});
-    await _ref.child('command_ts').set(DateTime.now().millisecondsSinceEpoch);
+    await _ref.child('command_ts').set(DateTime.now().millisecondsSinceEpoch ~/ 1000);
     await _ref.child('command_status').set('sent');
   }
 

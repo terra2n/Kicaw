@@ -21,9 +21,11 @@ const int PIN_RELAY    = 27;   // IN1 Relay -> GPIO 27
 // PIN_RADAR_RX dan PIN_RADAR_TX didefinisikan di ld2410_uart.h
 
 // =========================================================================
-// 2. KUNCI JARAK RADAR (GATE 0 = Radius < 75 cm)
+// 2. DEFAULT GATE RADAR (disimpan ke NVS, bisa diubah dari Flutter)
 // =========================================================================
-const byte BATAS_GERBANG_JARAK = 0;
+// Gate 0 = radius < 75cm (paling dekat, cocok untuk area ~45cm)
+// Gate 1 = radius 75-150cm, Gate 8 = 600-675cm (jangkauan penuh)
+const byte BATAS_GERBANG_DEFAULT = 0;  // Default: Gate 0 (~45-75cm)
 
 // =========================================================================
 // 3. KONFIGURASI PARAMETER AUDIT ENERGI
@@ -53,6 +55,7 @@ int   hitungHigh       = 0;
 unsigned long waktuMulaiMati = 0;
 float totalEnergi_Wh   = 0.0;
 float totalCO2_mg      = 0.0;
+byte  radarMaxGate     = BATAS_GERBANG_DEFAULT;
 
 unsigned long lastUpdateFirebase = 0;
 unsigned long lastUpdateSupabase = 0;
@@ -117,13 +120,22 @@ void onWiFiEvent(WiFiEvent_t event) {
 
 // =========================================================================
 // FUNGSI: Konfigurasi jarak radar HLK-LD2410C via UART
-// (Refactored: pakai library ld2410_uart.h)
+// Default = gate 0 (<75cm, sekitar 45cm), bisa diubah dari Flutter.
+// Konfigurasi disimpan di NVS agar persisten setelah reboot.
 // =========================================================================
 void konfigurasiJarakRadarFisik(byte gateTerap) {
-  Serial.println("[RADAR] Mengunci jangkauan ke Gate 0 (< 75cm)...");
+  Serial.print("[RADAR] Mengatur jangkauan ke Gate ");
+  Serial.print(gateTerap);
+  Serial.print(" (<");
+  Serial.print((gateTerap + 1) * 75);
+  Serial.println("cm)...");
 
-  if (radarSetMaxGate(gateTerap, gateTerap, 5)) {
-    Serial.println("[SUCCESS] Konfigurasi selesai!");
+  if (radarSetMaxGate(gateTerap, gateTerap, 1)) {
+    Serial.println("[SUCCESS] Konfigurasi gate berhasil!");
+    radarMaxGate = gateTerap;
+    // Simpan ke NVS agar persisten setelah reboot
+    prefs.putInt("radar_gate", gateTerap);
+    Serial.print("[NVS] Gate tersimpan: "); Serial.println(gateTerap);
   } else {
     Serial.println("[WARN] Radar mungkin tidak merespon, lanjut...");
   }
@@ -173,18 +185,24 @@ void hitungTotalEnergi(float &totalWh, float &totalMg) {
 // =========================================================================
 void pushKeFirebase() {
   if (!app.ready()) return;
+  esp_task_wdt_reset();
 
   float totalWh, totalMg;
   hitungTotalEnergi(totalWh, totalMg);
 
   uint16_t jarakCm = radarTerdeteksi
-      ? (BATAS_GERBANG_JARAK * 75 + 37) : 0;
+      ? (radarMaxGate * 75 + 37) : 0;
 
   Database.set<bool>(async_client, "ruangan_01/status_lampu", lampuNyala);
+  esp_task_wdt_reset();
   Database.set<bool>(async_client, "ruangan_01/status_radar", radarTerdeteksi);
+  esp_task_wdt_reset();
   Database.set<uint16_t>(async_client, "ruangan_01/radar_distance_cm", jarakCm);
+  esp_task_wdt_reset();
   Database.set<float>(async_client, "ruangan_01/energi_dihemat_wh", totalWh);
+  esp_task_wdt_reset();
   Database.set<float>(async_client, "ruangan_01/co2_dicegah_mg", totalMg);
+  esp_task_wdt_reset();
 
   // Push waktu_mulai_mati (epoch timestamp saat lampu mati)
   // Cloud Functions pakai ini buat hitung durasi lampu OFF
@@ -194,10 +212,12 @@ void pushKeFirebase() {
     if (now > 100000) {
       uint32_t epochMati = (uint32_t)(now - (millis() - waktuMulaiMati) / 1000);
       Database.set<uint32_t>(async_client, "ruangan_01/waktu_mulai_mati", epochMati);
+      esp_task_wdt_reset();
     }
   } else {
     // Lampu nyala, clear timestamp
     Database.set<uint32_t>(async_client, "ruangan_01/waktu_mulai_mati", 0);
+    esp_task_wdt_reset();
   }
 
   // Heartbeat: epoch seconds biar Flutter bisa detect kalau ESP mati
@@ -205,8 +225,10 @@ void pushKeFirebase() {
   if (now > 100000) { // NTP synced
     Database.set<uint32_t>(async_client, "ruangan_01/last_heartbeat",
         (uint32_t)now);
+    esp_task_wdt_reset();
   }
   Database.set<String>(async_client, "ruangan_01/last_heartbeat_ts", getTimestamp());
+  esp_task_wdt_reset();
 }
 
 
@@ -315,7 +337,7 @@ void setup() {
     .idle_core_mask = 0x3,
     .trigger_panic = true
   };
-  esp_task_wdt_init(&wdt_config);
+  esp_task_wdt_reconfigure(&wdt_config);
   esp_task_wdt_add(NULL);
 
   Serial.begin(115200);
@@ -329,7 +351,14 @@ void setup() {
   Serial.println("================================================");
 
   radarInit();
-  konfigurasiJarakRadarFisik(BATAS_GERBANG_JARAK);
+
+  // Buka NVS sekali di sini (namespace 'energi' untuk energi + radar_gate)
+  prefs.begin("energi");
+
+  // Load gate radar dari NVS (default = BATAS_GERBANG_DEFAULT jika belum pernah disimpan)
+  radarMaxGate = (byte)prefs.getInt("radar_gate", BATAS_GERBANG_DEFAULT);
+  Serial.print("[NVS] Load radar gate: "); Serial.println(radarMaxGate);
+  konfigurasiJarakRadarFisik(radarMaxGate);
 
   pinMode(PIN_RADAR, INPUT);
   pinMode(PIN_RELAY, OUTPUT);
@@ -340,7 +369,7 @@ void setup() {
   lampuNyala     = false;
   waktuMulaiMati = 0;  // [ESP-C5 fix] 0 = belum ada baseline; guard (> 0) mencegah phantom energy saat boot
 
-  prefs.begin("energi");
+  // Load data energi dari NVS (prefs sudah dibuka di atas)
   totalEnergi_Wh = prefs.getFloat("wh", 0.0);
   totalCO2_mg = prefs.getFloat("co2", 0.0);
   Serial.print("  Energi tersimpan: ");
@@ -365,10 +394,15 @@ void setup() {
 // =========================================================================
 void setupFirebaseCommands() {
   if (!app.ready()) return;
+  esp_task_wdt_reset();
   Database.set<String>(async_client, FB_CMD_PATH, "none");
+  esp_task_wdt_reset();
   Database.set<String>(async_client, FB_CMD_STATUS, "idle");
+  esp_task_wdt_reset();
   Database.set<String>(async_client, FB_CMD_PARAMS, "{}");
-  Database.set<uint32_t>(async_client, FB_RADAR_CFG "/command_ts", 0);
+  esp_task_wdt_reset();
+  Database.set<int64_t>(async_client, FB_RADAR_CFG "/command_ts", 0);  // [Fix #1] int64_t
+  esp_task_wdt_reset();
   Serial.println("[CMD] Firebase command paths initialized");
 }
 

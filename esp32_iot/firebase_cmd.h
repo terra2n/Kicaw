@@ -24,6 +24,8 @@ extern FirebaseApp app;
 extern AsyncClientClass async_client;
 extern RealtimeDatabase Database;
 extern String getTimestamp();
+extern byte radarMaxGate;
+extern Preferences prefs;
 
 // =========================================================================
 // STATE VARIABLES
@@ -33,7 +35,7 @@ static unsigned long cmdStartMs = 0;
 static bool engineeringMode = false;
 static unsigned long lastEngPush = 0;
 static String lastCommand = "";
-static unsigned long lastCmdCheck = 0;
+static int64_t lastCmdTs = 0;  // [Fix #1] int64_t agar tidak overflow epoch seconds
 
 // =========================================================================
 // FORWARD DECLARATIONS
@@ -133,8 +135,7 @@ int cmdParseIntParam(const String &json, const String &key, int defaultVal) {
 void cmdProcess(const String &command, const String &params) {
   if (command == "" || command == "none") return;
 
-  cmdProcessing = true;
-  cmdStartMs = millis();
+  // [Fix #2] cmdProcessing dan cmdStartMs diset dari cmdCheckFirebase(), tidak perlu diset ulang
   lastCommand = command;
   cmdUpdateStatus("processing");
 
@@ -165,9 +166,11 @@ void cmdProcess(const String &command, const String &params) {
   else if (command == "set_max_gate") {
     int mGate = cmdParseIntParam(params, "moving_gate", 3);
     int sGate = cmdParseIntParam(params, "stationary_gate", 2);
-    int timeout = cmdParseIntParam(params, "timeout", 5);
+    int timeout = cmdParseIntParam(params, "timeout", 1);
     if (radarSetMaxGate((uint8_t)mGate, (uint8_t)sGate, (uint16_t)timeout)) {
       delay(300);
+      radarMaxGate = (byte)mGate;
+      prefs.putInt("radar_gate", mGate);
       if (radarBacaKonfigurasi(&cfg)) cmdPushConfigResult(&cfg);
       cmdUpdateStatus("done");
     } else {
@@ -291,9 +294,8 @@ void cmdCheckFirebase() {
   lastPoll = now;
 
   static bool isFirstCheck = true;
-  static uint32_t lastCmdTs = 0;
 
-  uint32_t cmdTs = Database.get<uint32_t>(async_client, FB_CMD_TS);
+  int64_t cmdTs = Database.get<int64_t>(async_client, FB_CMD_TS);  // [Fix #1] int64_t
 
   if (isFirstCheck) {
     lastCmdTs = cmdTs;
@@ -312,8 +314,8 @@ void cmdCheckFirebase() {
   }
 
   lastCmdTs = cmdTs;
-  cmdProcessing = true;
-  cmdStartMs = millis();
+  cmdProcessing = true;   // [Fix #2] Set di sini (bukan di dalam cmdProcess)
+  cmdStartMs = millis();  // [Fix #2] Baseline timeout dimulai di sini
   cmdUpdateStatus("processing");
   Serial.print("[CMD] Received: ");
   Serial.println(cmd);
