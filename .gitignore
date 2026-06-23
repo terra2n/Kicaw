@@ -24,3 +24,15 @@ build/
 .pioenvs/
 .piolibdeps/
 esp32_iot/secrets.h
+
+# Flutter secrets — jangan pernah di-commit
+flutter_dashboard/.env
+flutter_dashboard/.env.local
+flutter_dashboard/.env.tmp
+
+# Firebase options (berisi API keys, generate ulang dengan: flutterfire configure)
+flutter_dashboard/lib/firebase_options.dart
+
+# Google Services (berisi project ID & keys)
+flutter_dashboard/android/app/google-services.json
+flutter_dashboard/ios/Runner/GoogleService-Info.plist

@@ -1,8 +1,29 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    // activity_logs — tulis hanya via Cloud Functions (Admin SDK)
+    match /activity_logs/{docId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // daily_logs — tulis hanya via Cloud Functions (Admin SDK)
+    match /daily_logs/{docId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // monthly_logs — tulis hanya via Cloud Functions (Admin SDK)
+    match /monthly_logs/{docId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // Blokir semua collection lain yang tidak terdaftar
     match /{document=**} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if false;
     }
   }
 }
