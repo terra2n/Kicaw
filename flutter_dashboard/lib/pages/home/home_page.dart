@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../widgets/section_header.dart';
 import '../../services/supabase_service.dart';
+import '../../services/realtime_service.dart';
 import '../../models/supabase/room_status.dart' as supa;
 import '../../models/supabase/daily_summary.dart';
 import '../../models/supabase/activity_log.dart';
@@ -22,14 +23,28 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   final SupabaseService _supa = SupabaseService();
+  // [FLU-H1 fix] RealtimeService instance disimpan agar bisa di-dispose
+  final RealtimeService _rtdb = RealtimeService();
 
   // Bug #10 fix: Future diinisialisasi sekali di initState, bukan tiap build()
   late Future<List<DailySummary>> _weeklyFuture;
+
+  // [FLU-H6 fix] Stream dibuat sekali dan di-share ke semua StreamBuilder
+  // Sebelumnya: 3 StreamBuilder masing-masing membuka koneksi Supabase terpisah
+  late Stream<supa.RoomStatus?> _roomStatusStream;
 
   @override
   void initState() {
     super.initState();
     _weeklyFuture = _supa.getDailySummaries(days: 7);
+    _roomStatusStream = _supa.streamRoomStatus(); // [FLU-H6 fix] satu stream, dipakai semua builder
+  }
+
+  @override
+  void dispose() {
+    // [FLU-H1 fix] Bersihkan timer dan subscription RealtimeService
+    _rtdb.dispose();
+    super.dispose();
   }
 
   @override
@@ -40,8 +55,9 @@ class _HomePageState extends State<HomePage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text('Smart Room'),
+            // [FLU-H6 fix] Pakai _roomStatusStream yang sudah ada, bukan buat baru
             StreamBuilder<supa.RoomStatus?>(
-              stream: _supa.streamRoomStatus(),
+              stream: _roomStatusStream,
               builder: (context, snap) {
                 if (snap.hasError) {
                   return Row(
@@ -114,8 +130,9 @@ class _HomePageState extends State<HomePage> {
 
               // ROOM STATUS
               const FadeSlide(index: 0, child: SectionHeader(title: 'ROOM STATUS')),
+              // [FLU-H6 fix] Pakai _roomStatusStream yang sudah ada
               FadeSlide(index: 1, child: StreamBuilder<supa.RoomStatus?>(
-                stream: _supa.streamRoomStatus(),
+                stream: _roomStatusStream,
                 builder: (context, snap) {
                   if (snap.hasError) return const ErrorBanner(message: 'Failed to get room status', onRetry: null);
                   if (!snap.hasData) return const ShimmerBlock(height: 160);
@@ -128,18 +145,18 @@ class _HomePageState extends State<HomePage> {
 
               // ENERGY AUDIT
               const FadeSlide(index: 2, child: SectionHeader(title: 'ENERGY AUDIT — TODAY')),
-              FadeSlide(index: 3, child: StreamBuilder<supa.RoomStatus?>(
-                stream: _supa.streamRoomStatus(),
+              // [FLU-H4 fix] Ambil data energi langsung dari RTDB (nilai aktual ESP32)
+              // Sebelumnya: co2Ppm (PPM sensor) dipakai sebagai proxy Wh — unit salah total
+              FadeSlide(index: 3, child: StreamBuilder<Map<String, dynamic>>(
+                stream: _rtdb.energyStream,
                 builder: (context, snap) {
                   if (snap.hasError) return const ErrorBanner(message: 'Energy data unavailable');
-                  final s = snap.data;
-                  if (s == null) return const ShimmerBlock(height: 100);
+                  final data = snap.data;
+                  if (data == null) return const ShimmerBlock(height: 100);
 
-                  // Estimate energy from lamp status and motion
-                  // This will be more accurate once ESP32 pushes calculated values
-                  final minutesOff = s.lampStatus ? 0 : 5; // Placeholder
-                  final whSaved = s.co2Ppm != null ? (s.co2Ppm! / 1000.0) * 0.003 : 0.0;
-                  final co2Mg = whSaved * 0.85; // 850g CO2/kWh
+                  final whSaved = (data['wh_saved'] as num).toDouble();
+                  final co2Mg = (data['co2_mg'] as num).toDouble();
+                  final minutesOff = (data['minutes_off'] as num).toInt();
 
                   return EnergyGrid(
                     whSaved: whSaved,
@@ -161,9 +178,9 @@ class _HomePageState extends State<HomePage> {
                   if (!snap.hasData) return const ShimmerBlock(height: 140);
                   if (snap.data!.isEmpty) return const EmptyState(icon: Icons.bar_chart, title: 'No chart data yet');
 
-                  // Convert daily summaries to whSaved values for chart
+                  // Tampilkan lampOnMinutes sebagai proxy aktivitas harian di chart
                   final values = snap.data!.reversed.map((d) {
-                    return (d.avgCo2Ppm ?? 0) * 0.003 * 0.85; // Rough CO2 to Wh conversion
+                    return d.lampOnMinutes.toDouble();
                   }).toList();
 
                   return WeeklyChart(values: values);

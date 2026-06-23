@@ -94,14 +94,18 @@ class _StatisticsPageState extends State<StatisticsPage> {
   Widget _buildAllTimeSummary() {
     if (_summaries == null || _summaries!.isEmpty) return const SizedBox.shrink();
 
-    final totalCo2Mg = _summaries!.fold<double>(0, (sum, s) => sum + (s.avgCo2Ppm ?? 0));
     final totalMotion = _summaries!.fold<int>(0, (sum, s) => sum + s.motionCount);
     final totalLampMinutes = _summaries!.fold<int>(0, (sum, s) => sum + s.lampOnMinutes);
+
+    // [FLU-H5 fix] avgCo2Ppm adalah konsentrasi udara (PPM sensor), bukan massa emisi CO₂.
+    // Hitung emisi dari energi yang terpakai: lampOnMinutes × 3W × faktor emisi grid Indonesia
+    final totalWhUsed = totalLampMinutes * (3.0 / 60.0);             // Wh
+    final totalCo2Grams = (totalWhUsed / 1000.0) * 0.85 * 1000.0;   // gram
 
     return AlltimeSummary(
       sessions: totalMotion,
       hoursSaved: totalLampMinutes / 60.0,
-      co2Grams: totalCo2Mg / 1000.0,
+      co2Grams: totalCo2Grams,
     );
   }
 
