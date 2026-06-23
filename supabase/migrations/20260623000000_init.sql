@@ -89,14 +89,47 @@ CREATE INDEX IF NOT EXISTS idx_activity_logs_room_name ON activity_logs(room_nam
 -- ============================================
 -- 5. ENABLE REALTIME
 -- ============================================
--- Enable realtime for room_status
-ALTER PUBLICATION supabase_realtime ADD TABLE room_status;
+-- Enable realtime for room_status safely
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_rel pr
+    JOIN pg_class c ON c.oid = pr.prrelid
+    JOIN pg_publication p ON p.oid = pr.prpubid
+    WHERE p.pubname = 'supabase_realtime'
+      AND c.relname = 'room_status'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE room_status;
+  END IF;
+END $$;
 
--- Enable realtime for sensor_logs
-ALTER PUBLICATION supabase_realtime ADD TABLE sensor_logs;
+-- Enable realtime for sensor_logs safely
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_rel pr
+    JOIN pg_class c ON c.oid = pr.prrelid
+    JOIN pg_publication p ON p.oid = pr.prpubid
+    WHERE p.pubname = 'supabase_realtime'
+      AND c.relname = 'sensor_logs'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE sensor_logs;
+  END IF;
+END $$;
 
--- Enable realtime for activity_logs
-ALTER PUBLICATION supabase_realtime ADD TABLE activity_logs;
+-- Enable realtime for activity_logs safely
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_rel pr
+    JOIN pg_class c ON c.oid = pr.prrelid
+    JOIN pg_publication p ON p.oid = pr.prpubid
+    WHERE p.pubname = 'supabase_realtime'
+      AND c.relname = 'activity_logs'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE activity_logs;
+  END IF;
+END $$;
 
 -- ============================================
 -- 6. ROW LEVEL SECURITY (RLS)
@@ -106,6 +139,20 @@ ALTER TABLE room_status ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sensor_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE daily_summaries ENABLE ROW LEVEL SECURITY;
 ALTER TABLE activity_logs ENABLE ROW LEVEL SECURITY;
+
+-- Drop existing policies to make it idempotent
+DROP POLICY IF EXISTS "Allow anonymous read" ON room_status;
+DROP POLICY IF EXISTS "Allow anonymous read" ON sensor_logs;
+DROP POLICY IF EXISTS "Allow anonymous read" ON daily_summaries;
+DROP POLICY IF EXISTS "Allow anonymous read" ON activity_logs;
+
+DROP POLICY IF EXISTS "Allow anonymous insert" ON room_status;
+DROP POLICY IF EXISTS "Allow anonymous insert" ON sensor_logs;
+DROP POLICY IF EXISTS "Allow anonymous insert" ON daily_summaries;
+DROP POLICY IF EXISTS "Allow anonymous insert" ON activity_logs;
+
+DROP POLICY IF EXISTS "Allow anonymous update" ON room_status;
+DROP POLICY IF EXISTS "Allow anonymous update" ON daily_summaries;
 
 -- Policy: Allow anonymous read for all tables
 CREATE POLICY "Allow anonymous read" ON room_status FOR SELECT USING (true);
@@ -204,25 +251,5 @@ BEGIN
   RETURN v_deleted_count;
 END;
 $$ LANGUAGE plpgsql;
-
--- ============================================
--- 8. SAMPLE DATA (Optional - for testing)
--- ============================================
--- Uncomment to insert sample data
-
-/*
-INSERT INTO sensor_logs (room_name, temperature_c, humidity_percent, co2_ppm, motion_detected, lamp_status)
-VALUES
-  ('ruangan_01', 25.5, 60.0, 450, FALSE, FALSE),
-  ('ruangan_01', 26.0, 58.5, 480, TRUE, TRUE),
-  ('ruangan_01', 25.8, 59.0, 460, FALSE, FALSE);
-
-INSERT INTO activity_logs (room_name, event_type, description)
-VALUES
-  ('ruangan_01', 'motion_detected', 'Motion detected in room'),
-  ('ruangan_01', 'lamp_on', 'Lamp turned on'),
-  ('ruangan_01', 'motion_cleared', 'Motion cleared'),
-  ('ruangan_01', 'lamp_off', 'Lamp turned off');
-*/
 
 COMMIT;

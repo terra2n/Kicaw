@@ -72,11 +72,14 @@ Setup Smart Room dashboard dengan Supabase dalam 30 menit.
 
 ### Step 4: Update Flutter (5 menit)
 
-1. Buka `flutter_dashboard/lib/config/supabase_config.dart`
-2. Isi credentials:
-   ```dart
-   static const String supabaseUrl = 'https://xxxxx.supabase.co';
-   static const String supabaseAnonKey = 'eyJhbGc...';
+1. Salin `.env.example` menjadi `.env` di folder `flutter_dashboard`:
+   ```bash
+   cp flutter_dashboard/.env.example flutter_dashboard/.env
+   ```
+2. Isi kredensial di `.env`:
+   ```env
+   SUPABASE_URL=https://xxxxx.supabase.co
+   SUPABASE_ANON_KEY=eyJhbGc...
    ```
 3. Install dependencies:
    ```bash
@@ -142,7 +145,7 @@ Supabase connection: FAILED
 
 ### Flutter tidak dapat data
 **Fix**: 
-1. Cek `supabase_config.dart`
+1. Cek berkas `.env` (URL dan Key)
 2. Pastikan ESP32 sudah push data (cek Table Editor)
 3. Restart Flutter app
 

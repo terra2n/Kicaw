@@ -92,17 +92,27 @@ create index idx_sensor_logs_room on sensor_logs(room_name);
 create index idx_daily_summaries_date on daily_summaries(date desc);
 create index idx_activity_logs_created_at on activity_logs(created_at desc);
 
--- Row Level Security (RLS) - allow all for now
+-- Row Level Security (RLS)
 alter table room_status enable row level security;
 alter table sensor_logs enable row level security;
 alter table daily_summaries enable row level security;
 alter table activity_logs enable row level security;
 
--- RLS Policies (allow all operations with anon key)
-create policy "Allow all operations" on room_status for all using (true) with check (true);
-create policy "Allow all operations" on sensor_logs for all using (true) with check (true);
-create policy "Allow all operations" on daily_summaries for all using (true) with check (true);
-create policy "Allow all operations" on activity_logs for all using (true) with check (true);
+-- Policies (Allow anonymous read)
+create policy "Allow anonymous read" on room_status for select using (true);
+create policy "Allow anonymous read" on sensor_logs for select using (true);
+create policy "Allow anonymous read" on daily_summaries for select using (true);
+create policy "Allow anonymous read" on activity_logs for select using (true);
+
+-- Policies (Allow anonymous insert)
+create policy "Allow anonymous insert" on sensor_logs for insert with check (true);
+create policy "Allow anonymous insert" on activity_logs for insert with check (true);
+create policy "Allow anonymous insert" on daily_summaries for insert with check (true);
+create policy "Allow anonymous insert" on room_status for insert with check (true);
+
+-- Policies (Allow anonymous update)
+create policy "Allow anonymous update" on room_status for update using (true);
+create policy "Allow anonymous update" on daily_summaries for update using (true);
 ```
 
 ### Step 4: Create Supabase Edge Function (for aggregation)
@@ -366,17 +376,40 @@ dependencies:
 ```
 
 ### Step 2: Initialize Supabase
-In `main.dart`:
+
+Setup file `.env` di folder `flutter_dashboard`:
+```env
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_ANON_KEY=your-anon-key
+```
+
+Kemudian inisialisasi di `main.dart` menggunakan `flutter_dotenv`:
 ```dart
+import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'config/supabase_config.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
-  await Supabase.initialize(
-    url: 'https://xxxxx.supabase.co',
-    anonKey: 'eyJhbGc...',
-  );
+  // Load environment variables
+  await dotenv.load(fileName: '.env');
+  
+  // Initialize Supabase
+  try {
+    final supabaseUrl = SupabaseConfig.supabaseUrl;
+    final supabaseKey = SupabaseConfig.supabaseAnonKey;
+    if (supabaseUrl.isNotEmpty && supabaseKey.isNotEmpty) {
+      await Supabase.initialize(
+        url: supabaseUrl,
+        anonKey: supabaseKey,
+      );
+      debugPrint('Supabase initialized successfully');
+    }
+  } catch (e) {
+    debugPrint('Supabase initialization failed: $e');
+  }
   
   runApp(MyApp());
 }
@@ -395,57 +428,136 @@ ref.onValue.listen((event) {
 
 **New: SupabaseService**
 ```dart
+import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../models/supabase/room_status.dart';
+import '../models/supabase/sensor_log.dart';
+import '../models/supabase/daily_summary.dart';
+import '../models/supabase/activity_log.dart';
 
 class SupabaseService {
-  final _client = Supabase.instance.client;
-  
-  // Get room status (realtime)
-  Stream<RoomStatus> getRoomStatusStream() {
+  // Akses _client ditunda sampai saat query pertama dipanggil agar tidak crash jika .env belum diisi.
+  SupabaseClient get _client => Supabase.instance.client;
+
+  bool get _isReady {
+    try {
+      Supabase.instance.client;
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  // ===== REALTIME: Room Status =====
+  Stream<RoomStatus?> streamRoomStatus() {
+    if (!_isReady) return Stream<RoomStatus?>.value(null).asBroadcastStream();
     return _client
         .from('room_status')
         .stream(primaryKey: ['id'])
         .eq('room_name', 'ruangan_01')
-        .map((data) {
-          if (data.isEmpty) return RoomStatus.empty();
-          return RoomStatus.fromJson(data.first);
-        });
+        .map((data) => data.isEmpty ? null : RoomStatus.fromJson(data.first));
   }
-  
-  // Get sensor logs (historical)
+
+  // ===== HISTORICAL: Sensor Logs =====
   Future<List<SensorLog>> getSensorLogs({int limit = 100}) async {
-    final data = await _client
-        .from('sensor_logs')
-        .select()
-        .eq('room_name', 'ruangan_01')
-        .order('recorded_at', ascending: false)
-        .limit(limit);
-    
-    return data.map((json) => SensorLog.fromJson(json)).toList();
+    if (!_isReady) return [];
+    try {
+      final response = await _client
+          .from('sensor_logs')
+          .select()
+          .eq('room_name', 'ruangan_01')
+          .order('recorded_at', ascending: false)
+          .limit(limit);
+      return response.map((json) => SensorLog.fromJson(json)).toList();
+    } catch (e) {
+      debugPrint('Error getting sensor logs: $e');
+      return [];
+    }
   }
-  
-  // Get daily summaries
+
+  // Menggunakan polling non-blocking berkala karena Supabase Realtime Stream 
+  // tidak mendukung pengurutan kolom non-PK.
+  Stream<List<SensorLog>> streamSensorLogs({int limit = 100}) {
+    if (!_isReady) return Stream<List<SensorLog>>.value([]).asBroadcastStream();
+    
+    late StreamController<List<SensorLog>> controller;
+    Timer? timer;
+    
+    controller = StreamController<List<SensorLog>>.broadcast(
+      onListen: () {
+        getSensorLogs(limit: limit).then((logs) {
+          if (!controller.isClosed) controller.add(logs);
+        });
+        timer = Timer.periodic(const Duration(seconds: 5), (_) async {
+          final logs = await getSensorLogs(limit: limit);
+          if (!controller.isClosed) controller.add(logs);
+        });
+      },
+      onCancel: () {
+        timer?.cancel();
+      },
+    );
+    return controller.stream;
+  }
+
+  // ===== AGGREGATED: Daily Summaries =====
   Future<List<DailySummary>> getDailySummaries({int days = 30}) async {
-    final data = await _client
-        .from('daily_summaries')
-        .select()
-        .eq('room_name', 'ruangan_01')
-        .order('date', ascending: false)
-        .limit(days);
-    
-    return data.map((json) => DailySummary.fromJson(json)).toList();
+    if (!_isReady) return [];
+    try {
+      final from = DateTime.now().subtract(Duration(days: days));
+      final response = await _client
+          .from('daily_summaries')
+          .select()
+          .eq('room_name', 'ruangan_01')
+          .gte('date', from.toIso8601String().split('T')[0])
+          .order('date', ascending: false)
+          .limit(days);
+      return response.map((json) => DailySummary.fromJson(json)).toList();
+    } catch (e) {
+      debugPrint('Error getting daily summaries: $e');
+      return [];
+    }
   }
-  
-  // Get activity logs
+
+  // ===== EVENTS: Activity Logs =====
   Future<List<ActivityLog>> getActivityLogs({int limit = 50}) async {
-    final data = await _client
-        .from('activity_logs')
-        .select()
-        .eq('room_name', 'ruangan_01')
-        .order('created_at', ascending: false)
-        .limit(limit);
+    if (!_isReady) return [];
+    try {
+      final response = await _client
+          .from('activity_logs')
+          .select()
+          .eq('room_name', 'ruangan_01')
+          .order('created_at', ascending: false)
+          .limit(limit);
+      return response.map((json) => ActivityLog.fromJson(json)).toList();
+    } catch (e) {
+      debugPrint('Error getting activity logs: $e');
+      return [];
+    }
+  }
+
+  Stream<List<ActivityLog>> streamActivityLogs({int limit = 50}) {
+    if (!_isReady) return Stream<List<ActivityLog>>.value([]).asBroadcastStream();
     
-    return data.map((json) => ActivityLog.fromJson(json)).toList();
+    late StreamController<List<ActivityLog>> controller;
+    Timer? timer;
+    
+    controller = StreamController<List<ActivityLog>>.broadcast(
+      onListen: () {
+        getActivityLogs(limit: limit).then((logs) {
+          if (!controller.isClosed) controller.add(logs);
+        });
+        timer = Timer.periodic(const Duration(seconds: 5), (_) async {
+          final logs = await getActivityLogs(limit: limit);
+          if (!controller.isClosed) controller.add(logs);
+        });
+      },
+      onCancel: () {
+        timer?.cancel();
+      },
+    );
+    return controller.stream;
   }
 }
 ```

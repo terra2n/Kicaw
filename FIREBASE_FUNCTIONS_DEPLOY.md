@@ -231,6 +231,12 @@ npm run build
 firebase deploy --only functions
 ```
 
+### Recent Improvements & Optimizations
+
+* **Zero-Read Incremental DB Updates:** Previously, updating daily logs required querying the entire activity collection to calculate session counts, and monthly updates queried all daily logs. We optimized this by using Firestore `admin.firestore.FieldValue.increment()`. Count increments are triggered directly during state transitions, reducing Firestore reads to **0 reads** during updates.
+* **Lamp Off Duration Correction:** Corrected the unit mismatch where `Date.now()` (milliseconds) was subtracted by `waktuMulaiMati` (seconds). The calculation is now properly normalized: `(Date.now() / 1000) - waktuMulaiMati`.
+* **WIB Timezone Consistency:** Local date methods (`getFullYear`, `getMonth`) were replaced with UTC methods (`getUTCFullYear`, `getUTCMonth`) to guarantee consistent WIB (UTC+7) calculations on serverless cloud servers.
+
 ---
 
 ## 💰 Cost Estimation

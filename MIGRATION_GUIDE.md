@@ -97,19 +97,23 @@ flutter pub get
 
 ### 2.2 Update Supabase Config
 
-Edit file `lib/config/supabase_config.dart`:
+Salin berkas `.env.example` menjadi `.env` di direktori `flutter_dashboard`:
 
-```dart
-class SupabaseConfig {
-  static const String supabaseUrl = 'https://xxxxx.supabase.co';  // GANTI INI
-  static const String supabaseAnonKey = 'eyJhbGc...';  // GANTI INI
-}
+```bash
+cp .env.example .env
+```
+
+Edit berkas `.env` tersebut dan isi kredensial Supabase Anda:
+
+```env
+SUPABASE_URL=https://xxxxx.supabase.co
+SUPABASE_ANON_KEY=eyJhbGc...
 ```
 
 **Tips**:
-- Copy URL dan Key dari Supabase dashboard (Settings > API)
-- Pastikan tidak ada spasi di awal/akhir
-- Key sangat panjang, copy seluruhnya
+- Salin URL dan Key dari Supabase dashboard (Settings > API)
+- Pastikan tidak ada spasi tambahan di awal/akhir baris
+- Key anon public sangat panjang, pastikan tersalin seutuhnya
 
 ### 2.3 Test Koneksi
 
@@ -317,7 +321,7 @@ Supabase connection: FAILED
 - Tidak ada data yang muncul
 
 **Solutions**:
-1. Cek `supabase_config.dart` (URL dan Key)
+1. Cek file `.env` (URL dan Key)
 2. Cek RLS policies di Supabase (harus allow anonymous read)
 3. Cek apakah ESP32 sudah push data (cek Table Editor)
 4. Restart Flutter app

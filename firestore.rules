@@ -20,6 +20,12 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // fcm_tokens — diperbolehkan tulis oleh client untuk pendaftaran push notifications
+    match /fcm_tokens/{docId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
     // Blokir semua collection lain yang tidak terdaftar
     match /{document=**} {
       allow read: if true;

@@ -2,7 +2,7 @@
   "rules": {
     "ruangan_01": {
       ".read": true,
-      ".write": false,
+      ".write": true,
       ".indexOn": ["timestamp"]
     }
   }
