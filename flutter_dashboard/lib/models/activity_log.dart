@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 class ActivityLog {
   final String event;
   final String type;
@@ -19,9 +21,13 @@ class ActivityLog {
       type: data['type'] ?? '',
       whSaved: (data['wh_saved'] ?? 0).toDouble(),
       co2Mg: (data['co2_mg'] ?? 0).toDouble(),
+      // Firestore menyimpan timestamp sebagai objek Timestamp, bukan String
       timestamp: data['timestamp'] != null
-          ? DateTime.parse(data['timestamp'])
+          ? (data['timestamp'] is Timestamp
+              ? (data['timestamp'] as Timestamp).toDate()
+              : DateTime.tryParse(data['timestamp'].toString()) ?? DateTime.now())
           : DateTime.now(),
     );
   }
 }
+

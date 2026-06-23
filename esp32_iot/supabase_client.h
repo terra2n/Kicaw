@@ -54,7 +54,12 @@ private:
 
 public:
     SupabaseClient(const String& url, const String& key) {
-        supabaseUrl = url;
+        // [ESP-C4 fix] Normalise URL: hapus trailing slash & suffix /rest/v1
+        // agar makeRequest bisa append endpoint dengan benar tanpa double-path
+        String cleanUrl = url;
+        if (cleanUrl.endsWith("/")) cleanUrl.remove(cleanUrl.length() - 1);
+        if (cleanUrl.endsWith("/rest/v1")) cleanUrl.remove(cleanUrl.length() - 8);
+        supabaseUrl = cleanUrl;
         supabaseKey = key;
         secureClient = new WiFiClientSecure();
         secureClient->setInsecure(); // Skip certificate validation (for development)

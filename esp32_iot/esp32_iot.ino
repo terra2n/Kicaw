@@ -360,7 +360,7 @@ void setup() {
   hitungLow      = 0;
   hitungHigh     = 0;
   lampuNyala     = false;
-  waktuMulaiMati = millis();
+  waktuMulaiMati = 0;  // [ESP-C5 fix] 0 = belum ada baseline; guard (> 0) mencegah phantom energy saat boot
 
   prefs.begin("energi");
   totalEnergi_Wh = prefs.getFloat("wh", 0.0);
@@ -419,7 +419,12 @@ void loop() {
       if (!firebaseReady) {
         initFirebaseServices();
       }
-      if (!supabaseReady && !supabaseClient) {
+      if (!supabaseReady) {
+        // [ESP-C5 fix] Hapus client lama agar bisa reconnect bersih
+        if (supabaseClient) {
+          delete supabaseClient;
+          supabaseClient = nullptr;
+        }
         initSupabase();
       }
       break;

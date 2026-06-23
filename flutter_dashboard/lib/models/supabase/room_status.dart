@@ -31,7 +31,9 @@ class RoomStatus {
       motionDetected: json['motion_detected'] as bool? ?? false,
       lampStatus: json['lamp_status'] as bool? ?? false,
       fanStatus: json['fan_status'] as bool? ?? false,
-      updatedAt: DateTime.parse(json['updated_at'] as String),
+      updatedAt: json['updated_at'] != null
+          ? DateTime.tryParse(json['updated_at'].toString()) ?? DateTime.now()
+          : DateTime.now(),
     );
   }
 

@@ -31,7 +31,9 @@ class SensorLog {
       motionDetected: json['motion_detected'] as bool?,
       lampStatus: json['lamp_status'] as bool?,
       fanStatus: json['fan_status'] as bool?,
-      recordedAt: DateTime.parse(json['recorded_at'] as String),
+      recordedAt: json['recorded_at'] != null
+          ? DateTime.tryParse(json['recorded_at'].toString()) ?? DateTime.now()
+          : DateTime.now(),
     );
   }
 

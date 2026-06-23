@@ -27,7 +27,9 @@ class DailySummary {
     return DailySummary(
       id: json['id'] as int?,
       roomName: json['room_name'] as String,
-      date: DateTime.parse(json['date'] as String),
+      date: json['date'] != null
+          ? DateTime.tryParse(json['date'].toString()) ?? DateTime.now()
+          : DateTime.now(),
       avgTemperatureC: (json['avg_temperature_c'] as num?)?.toDouble(),
       avgHumidityPercent: (json['avg_humidity_percent'] as num?)?.toDouble(),
       avgCo2Ppm: (json['avg_co2_ppm'] as num?)?.toDouble(),
