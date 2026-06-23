@@ -1,16 +1,17 @@
 # Smart Room eCO2 Dashboard
 
-Flutter dashboard application for real-time monitoring of Smart Room environmental data (eCO2, temperature, humidity, occupancy) using ESP32 sensors with Firebase backend.
+Flutter dashboard application for real-time monitoring of Smart Room environmental data (eCO2, temperature, humidity, occupancy) using ESP32 sensors with dual-backend support (Firebase and Supabase).
 
 ## 📱 Features
 
-- **Real-time Monitoring**: Live eCO2, temperature, humidity, and radar occupancy data
-- **Statistics & Analytics**: Historical data visualization with interactive charts
-- **Carbon Footprint**: Track and analyze CO2 emissions over time
-- **Radar Detection**: Human presence detection with configurable gate sensitivity
-- **Push Notifications**: Customizable alerts for threshold breaches
-- **Dark/Light Theme**: Adaptive UI with Material Design 3
-- **Offline Support**: Local data caching with SharedPreferences
+- **Dual-Backend Support**: Live real-time dashboard updates via Firebase Realtime DB, and historical logs, daily summaries, and activity event feeds powered by Supabase PostgreSQL.
+- **Real-time Monitoring**: Live eCO2, temperature, humidity, and radar occupancy data.
+- **Statistics & Analytics**: Historical data visualization with interactive charts.
+- **Carbon Footprint**: Track and analyze CO2 emissions saved/prevented over time based on actual lamp OFF duration.
+- **Radar Detection**: Human presence detection with configurable gate sensitivity.
+- **Push Notifications**: Customizable alerts for threshold breaches and token pendaftaran securely stored in Firestore.
+- **Dark/Light Theme**: Adaptive UI with Material Design 3.
+- **Offline Support**: Local data caching with SharedPreferences.
 
 ## 🏗️ Architecture
 
@@ -37,7 +38,8 @@ lib/
 ### Prerequisites
 
 - Flutter SDK `>=3.0.0 <4.0.0`
-- Firebase project with Realtime Database enabled
+- Firebase project with Realtime Database and Cloud Messaging enabled
+- Supabase project with PostgreSQL tables initialized (`supabase/schema.sql`)
 - ESP32 hardware setup (optional, for sensor integration)
 
 ### Installation
@@ -48,43 +50,59 @@ lib/
    cd flutter_dashboard
    ```
 
-2. **Install dependencies**
+2. **Configure Environment Variables (.env)**
+   Copy `.env.example` to `.env` and fill in your Supabase and Firebase credentials:
+   ```bash
+   cp .env.example .env
+   # Open .env in your editor and input the values
+   ```
+
+3. **Install dependencies**
    ```bash
    flutter pub get
    ```
 
-3. **Configure Firebase**
-   
+4. **Configure Firebase**
    Place your `google-services.json` (Android) and `GoogleService-Info.plist` (iOS) in the respective platform directories, or run:
    ```bash
    flutterfire configure
    ```
 
-4. **Run the app**
+5. **Run the app**
    ```bash
    flutter run
    ```
 
 ## 🔧 Configuration
 
-### Firebase Database Structure
+### Database Architecture
 
-Expected Realtime Database structure:
+The application implements a dual-backend architecture:
+1. **Firebase Realtime Database:** Used for high-frequency live sensor readings and occupancy status updates.
+2. **Supabase PostgreSQL:** Used for storing historical logs, daily aggregated summaries, and activity event feeds.
+
+### Firebase Realtime Database Structure
 ```json
 {
   "sensors": {
-    "eco2": <number>,
-    "temperature": <number>,
-    "humidity": <number>,
-    "timestamp": <timestamp>
+    "eco2": 450,
+    "temperature": 27.5,
+    "humidity": 60,
+    "timestamp": 1718625900
   },
   "radar": {
-    "occupied": <boolean>,
-    "moving_sensitivity": <number>,
-    "stationary_sensitivity": <number>
+    "occupied": true,
+    "moving_sensitivity": 50,
+    "stationary_sensitivity": 50
   }
 }
 ```
+
+### Supabase Table Schemas
+- **`room_status`**: Live status of the room (single row).
+- **`sensor_logs`**: Historical sensor records pushed every 5 seconds.
+- **`daily_summaries`**: Aggregated stats per room per day (averages, min/max values, total lamp-off duration).
+- **`activity_logs`**: Room events (e.g. `motion_detected`, `motion_cleared`, `lamp_on`, `lamp_off`).
 
 ### Notification Settings
 
@@ -100,7 +118,9 @@ Configure alert thresholds in **Settings** page:
 |---------|---------|
 | `firebase_core` | Firebase initialization |
 | `firebase_database` | Realtime data sync |
-| `cloud_firestore` | Historical data storage |
+| `cloud_firestore` | Push notification token storage (`/fcm_tokens`) |
+| `supabase_flutter` | Accessing historical records, daily aggregation, and activity logs |
+| `flutter_dotenv` | Load environment variables from `.env` file |
 | `fl_chart` | Interactive charts |
 | `google_fonts` | Typography |
 | `shared_preferences` | Local settings cache |

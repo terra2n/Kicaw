@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/supabase/room_status.dart';
@@ -40,7 +41,7 @@ class SupabaseService {
   }
 
   Stream<RoomStatus?> streamRoomStatus() {
-    if (!_isReady) return Stream.value(null);
+    if (!_isReady) return Stream<RoomStatus?>.value(null).asBroadcastStream();
     return _client
         .from('room_status')
         .stream(primaryKey: ['id'])
@@ -80,17 +81,31 @@ class SupabaseService {
     }
   }
 
-  // Bug #6 fix: .stream() tidak support order() pada kolom non-PK.
-  // Sorting dilakukan client-side di dalam .map() agar tidak error runtime.
+  // Menggunakan polling non-blocking berkala karena Supabase Realtime Stream 
+  // tidak mendukung pengurutan kolom non-PK, sehingga membatasi pembacaan data terlama.
   Stream<List<SensorLog>> streamSensorLogs({int limit = 100}) {
-    if (!_isReady) return Stream.value([]);
-    return _client
-        .from('sensor_logs')
-        .stream(primaryKey: ['id'])
-        .eq('room_name', 'ruangan_01')
-        .limit(limit)
-        .map((data) => (data.map((json) => SensorLog.fromJson(json)).toList()
-              ..sort((a, b) => b.recordedAt.compareTo(a.recordedAt))));
+    if (!_isReady) return Stream<List<SensorLog>>.value([]).asBroadcastStream();
+    
+    late StreamController<List<SensorLog>> controller;
+    Timer? timer;
+    
+    controller = StreamController<List<SensorLog>>.broadcast(
+      onListen: () {
+        getSensorLogs(limit: limit).then((logs) {
+          if (!controller.isClosed) controller.add(logs);
+        });
+        
+        timer = Timer.periodic(const Duration(seconds: 5), (_) async {
+          final logs = await getSensorLogs(limit: limit);
+          if (!controller.isClosed) controller.add(logs);
+        });
+      },
+      onCancel: () {
+        timer?.cancel();
+      },
+    );
+    
+    return controller.stream;
   }
 
   // ===== AGGREGATED: Daily Summaries =====
@@ -161,17 +176,30 @@ class SupabaseService {
     }
   }
 
-  // Bug #7 fix: .stream() tidak support order() pada kolom non-PK.
-  // Sorting dilakukan client-side di dalam .map() agar tidak error runtime.
+  // Menggunakan polling berkala karena alasan yang sama dengan streamSensorLogs
   Stream<List<ActivityLog>> streamActivityLogs({int limit = 50}) {
-    if (!_isReady) return Stream.value([]);
-    return _client
-        .from('activity_logs')
-        .stream(primaryKey: ['id'])
-        .eq('room_name', 'ruangan_01')
-        .limit(limit)
-        .map((data) => (data.map((json) => ActivityLog.fromJson(json)).toList()
-              ..sort((a, b) => b.createdAt.compareTo(a.createdAt))));
+    if (!_isReady) return Stream<List<ActivityLog>>.value([]).asBroadcastStream();
+    
+    late StreamController<List<ActivityLog>> controller;
+    Timer? timer;
+    
+    controller = StreamController<List<ActivityLog>>.broadcast(
+      onListen: () {
+        getActivityLogs(limit: limit).then((logs) {
+          if (!controller.isClosed) controller.add(logs);
+        });
+        
+        timer = Timer.periodic(const Duration(seconds: 5), (_) async {
+          final logs = await getActivityLogs(limit: limit);
+          if (!controller.isClosed) controller.add(logs);
+        });
+      },
+      onCancel: () {
+        timer?.cancel();
+      },
+    );
+    
+    return controller.stream;
   }
 
   // ===== WRITE =====

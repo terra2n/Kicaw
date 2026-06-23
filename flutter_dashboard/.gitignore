@@ -50,5 +50,8 @@ app.*.map.json
 .env.*.local
 .env.tmp
 
+# Test output
+test_output.txt
+
 # Firebase options — berisi API keys, generate ulang dengan: flutterfire configure
 lib/firebase_options.dart

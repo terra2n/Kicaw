@@ -90,12 +90,13 @@ class _StatisticsPageState extends State<StatisticsPage> {
       ),
     );
   }
-
   Widget _buildMonthlyTargets() {
     if (_summaries == null || _summaries!.isEmpty) return const SizedBox.shrink();
 
     final totalLampMinutes = _summaries!.fold<int>(0, (sum, s) => sum + s.lampOnMinutes);
-    final totalWhSaved = totalLampMinutes * (3.0 / 60.0);
+    final totalDays = _summaries!.length;
+    final totalLampOffMinutes = (totalDays * 1440) - totalLampMinutes;
+    final totalWhSaved = totalLampOffMinutes * (3.0 / 60.0);
     final totalCo2Grams = totalWhSaved * 0.85;
 
     const targetMonthlyGrams = 50.0;
@@ -115,15 +116,15 @@ class _StatisticsPageState extends State<StatisticsPage> {
 
     final totalMotion = _summaries!.fold<int>(0, (sum, s) => sum + s.motionCount);
     final totalLampMinutes = _summaries!.fold<int>(0, (sum, s) => sum + s.lampOnMinutes);
+    final totalDays = _summaries!.length;
+    final totalLampOffMinutes = (totalDays * 1440) - totalLampMinutes;
 
-    // [FLU-H5 fix] avgCo2Ppm adalah konsentrasi udara (PPM sensor), bukan massa emisi CO₂.
-    // Hitung emisi dari energi yang terpakai: lampOnMinutes × 3W × faktor emisi grid Indonesia
-    final totalWhUsed = totalLampMinutes * (3.0 / 60.0);             // Wh
-    final totalCo2Grams = (totalWhUsed / 1000.0) * 0.85 * 1000.0;   // gram
+    final totalWhSaved = totalLampOffMinutes * (3.0 / 60.0);
+    final totalCo2Grams = (totalWhSaved / 1000.0) * 0.85 * 1000.0; // gram
 
     return AlltimeSummary(
       sessions: totalMotion,
-      hoursSaved: totalLampMinutes / 60.0,
+      hoursSaved: totalLampOffMinutes / 60.0,
       co2Grams: totalCo2Grams,
     );
   }

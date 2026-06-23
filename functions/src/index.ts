@@ -24,7 +24,7 @@ function getDateKey(date: Date): string {
 
 function getMonthKey(date: Date): string {
   const wib = toWIB(date);
-  return `${wib.getFullYear()}-${String(wib.getMonth() + 1).padStart(2, "0")}`;
+  return `${wib.getUTCFullYear()}-${String(wib.getUTCMonth() + 1).padStart(2, "0")}`;
 }
 
 function calculateEnergyWh(durasiDetik: number): number {
@@ -39,7 +39,6 @@ function calculateCO2Mg(energiWh: number): number {
 export const onLampChange = functions.database
   .ref("ruangan_01/status_lampu")
   .onUpdate(async (change, context) => {
-    // [BACK-H1 fix] Wrap seluruh logic dalam try/catch agar error ter-log
     try {
       const before = change.before.val();
       const after = change.after.val();
@@ -63,7 +62,8 @@ export const onLampChange = functions.database
         const snap = await rtdb.ref("ruangan_01/waktu_mulai_mati").once("value");
         const waktuMulaiMati = snap.val();
         if (waktuMulaiMati && typeof waktuMulaiMati === "number") {
-          const durasiDetik = (Date.now() - waktuMulaiMati) / 1000;
+          // [BUG FIX] waktuMulaiMati dalam detik, Date.now() dalam milidetik.
+          const durasiDetik = (Date.now() / 1000) - waktuMulaiMati;
           if (durasiDetik > 0 && durasiDetik < 86400) {
             // max 1 hari
             whSaved = calculateEnergyWh(durasiDetik);
@@ -89,6 +89,27 @@ export const onLampChange = functions.database
       functions.logger.info("Activity log:", event, { whSaved, co2Mg });
 
       await db.collection("activity_logs").add(logEntry);
+
+      // [OPTIMIZATION] Increment session count incrementally instead of doing heavy reads in onEnergyUpdate
+      const dateKey = getDateKey(now);
+      const monthKey = getMonthKey(now);
+
+      const dailyRef = db.collection("daily_logs").doc(dateKey);
+      await dailyRef.set(
+        {
+          sessions: admin.firestore.FieldValue.increment(1),
+        },
+        { merge: true }
+      );
+
+      const monthlyRef = db.collection("monthly_logs").doc(monthKey);
+      await monthlyRef.set(
+        {
+          total_sessions: admin.firestore.FieldValue.increment(1),
+        },
+        { merge: true }
+      );
+
       return null;
     } catch (err) {
       functions.logger.error("[onLampChange] Unhandled error:", err);
@@ -100,36 +121,25 @@ export const onLampChange = functions.database
 export const onEnergyUpdate = functions.database
   .ref("ruangan_01/energi_dihemat_wh")
   .onUpdate(async (change, context) => {
-    // [BACK-H1 fix] Wrap seluruh logic dalam try/catch
     try {
       const newWh = change.after.val() || 0;
+      const oldWh = change.before.val() || 0;
+
+      // Skip if value didn't change
+      if (newWh === oldWh) return null;
+
       const now = new Date();
-      const dateKey = getDateKey(now);   // [BACK-H5 fix] WIB
-      const monthKey = getMonthKey(now); // [BACK-H5 fix] WIB
+      const dateKey = getDateKey(now);   // WIB
+      const monthKey = getMonthKey(now); // WIB
 
       const co2Mg = calculateCO2Mg(newWh);
       const minutesOff = newWh > 0 ? Math.round((newWh / DAYA_LAMPU_WATT) * 60) : 0;
 
-      // Read activity count for today
-      const todayStart = new Date(toWIB(now).getFullYear(), toWIB(now).getMonth(), toWIB(now).getDate());
-      const todayEnd = new Date(todayStart);
-      todayEnd.setDate(todayEnd.getDate() + 1);
-
-      const activitySnap = await db
-        .collection("activity_logs")
-        .where(
-          "timestamp",
-          ">=",
-          admin.firestore.Timestamp.fromDate(todayStart)
-        )
-        .where(
-          "timestamp",
-          "<",
-          admin.firestore.Timestamp.fromDate(todayEnd)
-        )
-        .get();
-
-      const sessions = activitySnap.size;
+      // Calculate deltas to update monthly log incrementally (0 reads!)
+      const deltaWh = newWh - oldWh;
+      const deltaCo2 = calculateCO2Mg(newWh) - calculateCO2Mg(oldWh);
+      const deltaMinutes = (newWh > 0 ? Math.round((newWh / DAYA_LAMPU_WATT) * 60) : 0) - 
+                           (oldWh > 0 ? Math.round((oldWh / DAYA_LAMPU_WATT) * 60) : 0);
 
       // Update daily log
       const dailyRef = db.collection("daily_logs").doc(dateKey);
@@ -138,65 +148,35 @@ export const onEnergyUpdate = functions.database
           date: dateKey,
           wh_saved: newWh,
           co2_mg: co2Mg,
-          sessions,
           minutes_off: minutesOff,
           updated_at: admin.firestore.FieldValue.serverTimestamp(),
         },
         { merge: true }
       );
 
-      functions.logger.info("Daily log updated:", {
+      functions.logger.info("Daily log updated (incremental):", {
         date: dateKey,
         whSaved: newWh,
         co2Mg,
-        sessions,
       });
 
-      // [BACK-H2 fix] Hitung total bulan ini secara kumulatif dari semua daily_logs
-      // Sebelumnya: monthly di-set dengan newWh saja → total bulan = nilai hari terakhir
-      const wib = toWIB(now);
-      const monthStart = `${wib.getFullYear()}-${String(wib.getMonth() + 1).padStart(2, "0")}-01`;
-      const nextMonth = new Date(wib.getFullYear(), wib.getMonth() + 1, 1);
-      const monthEnd = `${nextMonth.getFullYear()}-${String(nextMonth.getMonth() + 1).padStart(2, "0")}-01`;
-
-      const monthSnap = await db
-        .collection("daily_logs")
-        .where("date", ">=", monthStart)
-        .where("date", "<", monthEnd)
-        .get();
-
-      let monthlyWh = 0;
-      let monthlyCo2 = 0;
-      let monthlySessions = 0;
-      let monthlyMinutes = 0;
-
-      monthSnap.forEach((doc) => {
-        const d = doc.data();
-        monthlyWh       += d.wh_saved      || 0;
-        monthlyCo2      += d.co2_mg        || 0;
-        monthlySessions += d.sessions      || 0;
-        monthlyMinutes  += d.minutes_off   || 0;
-      });
-
-      // Update monthly aggregate (kumulatif semua hari bulan ini)
+      // Update monthly log incrementally (0 reads!)
       const monthlyRef = db.collection("monthly_logs").doc(monthKey);
       await monthlyRef.set(
         {
           month: monthKey,
-          total_wh: monthlyWh,
-          total_co2: monthlyCo2,
-          total_sessions: monthlySessions,
-          total_minutes_off: monthlyMinutes,
+          total_wh: admin.firestore.FieldValue.increment(deltaWh),
+          total_co2: admin.firestore.FieldValue.increment(deltaCo2),
+          total_minutes_off: admin.firestore.FieldValue.increment(deltaMinutes),
           updated_at: admin.firestore.FieldValue.serverTimestamp(),
         },
         { merge: true }
       );
 
-      functions.logger.info("Monthly log updated:", {
+      functions.logger.info("Monthly log updated (incremental):", {
         month: monthKey,
-        totalWh: monthlyWh,
-        totalCo2: monthlyCo2,
-        totalSessions: monthlySessions,
+        deltaWh,
+        deltaCo2,
       });
 
       return null;
@@ -210,7 +190,6 @@ export const onEnergyUpdate = functions.database
 export const onRadarChange = functions.database
   .ref("ruangan_01/status_radar")
   .onUpdate(async (change, context) => {
-    // [BACK-H1 fix] Wrap seluruh logic dalam try/catch
     try {
       const before = change.before.val();
       const after = change.after.val();
@@ -243,6 +222,26 @@ export const onRadarChange = functions.database
 
       functions.logger.info("Radar event:", event);
       await db.collection("activity_logs").add(logEntry);
+
+      // [OPTIMIZATION] Increment session count incrementally
+      const dateKey = getDateKey(now);
+      const monthKey = getMonthKey(now);
+
+      const dailyRef = db.collection("daily_logs").doc(dateKey);
+      await dailyRef.set(
+        {
+          sessions: admin.firestore.FieldValue.increment(1),
+        },
+        { merge: true }
+      );
+
+      const monthlyRef = db.collection("monthly_logs").doc(monthKey);
+      await monthlyRef.set(
+        {
+          total_sessions: admin.firestore.FieldValue.increment(1),
+        },
+        { merge: true }
+      );
 
       return null;
     } catch (err) {

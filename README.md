@@ -1,186 +1,305 @@
-# Kicaw — Smart Room eCO2
+# Smart Room eCO2 — Kicaw
 
 [![Flutter CI](https://github.com/terra2n/Kicaw/actions/workflows/flutter_ci.yml/badge.svg)](https://github.com/terra2n/Kicaw/actions/workflows/flutter_ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-Prototipe Otomatisasi Lampu Ruangan Berbasis ESP32 untuk Memantau Emisi Karbon Secara Jarak Jauh.
+Prototipe otomatisasi lampu ruangan berbasis **ESP32** dengan sensor radar **HLK-LD2410C** untuk memantau dan mengurangi emisi karbon secara jarak jauh. Menggunakan arsitektur **dual-backend**: **Firebase** (real-time) + **Supabase** (PostgreSQL untuk data historis & analitik).
 
 > Referensi: Singh & Dhanekar (2026)
 
 ---
 
-## Arsitektur Sistem
+## 🏗️ Arsitektur Sistem
 
 ```
-+-------------+          +------------------+          +------------------+
-|   ESP32     |  WiFi    |  Firebase        |  Stream  |  Flutter         |
-|  + Radar    |--------->|  Realtime DB     |<---------|  Dashboard       |
-|  + Relay    |  HTTPS   |  (Cloud)         |  onValue |  (Mobile/Web)    |
-+-------------+          +------------------+          +------------------+
-      |                           |
-      | Sensor Radar mendeteksi   | Data: status_lampu,
-      | gerakan dalam <75cm       | energi_dihemat_wh,
-      | → relay ON/OFF            | co2_dicegah_mg
-      | Kalkulasi emisi CO2       |
++-------------+    WiFi/HTTPS    +------------------+     Stream      +------------------+
+|   ESP32     | +-------------->  |  Firebase        | <-------------+  Flutter          |
+|  + Radar    |    (dual-write)  |  Realtime DB     |    onValue     |  Dashboard        |
+|  + Relay    |                  |  (Live Status)   |                |  (Mobile/Web)     |
+|  + NVS      | +------------->  +------------------+                +------------------+
+|  Persist    |    REST/HTTPS    |  Supabase        |  Realtime      |                   |
++-------------+                  |  PostgreSQL      | <-------------+                   |
+      |                          |  (Historical)    |    Stream     +------------------+
+      | Sensor Radar             +------------------+
+      |  mendeteksi gerakan            |
+      |  → relay ON/OFF               | Cloud Functions (Firebase)
+      |  → kalkulasi emisi            |  - onLampChange
+      |  → dual push (FB + SB)         |  - onEnergyUpdate
+                                       |  - onRadarChange
+                                       v
+                               +------------------+
+                               |  Firestore       |
+                               |  (Daily/Monthly  |
+                               |   Logs + Activity|
+                               +------------------+
 ```
 
-## Struktur Repositori
+---
+
+## 📁 Struktur Repositori
 
 ```
-├── esp32_iot/              # Firmware ESP32 (Arduino C++)
-│   ├── esp32_iot.ino       # Source code utama
-│   └── README.md           # 📘 Dokumentasi hardware & firmware
-├── flutter_dashboard/      # Aplikasi dashboard (Flutter)
+├── esp32_iot/                  # Firmware ESP32 (Arduino C++)
+│   ├── esp32_iot.ino          # Source code utama
+│   ├── firebase_cmd.h         # Handler command radar via Firebase
+│   ├── supabase_client.h      # Client HTTP untuk Supabase REST API
+│   ├── ld2410_uart.h          # Library protokol UART HLK-LD2410C
+│   ├── secrets.h              # Credentials WiFi + Firebase + Supabase (git-ignored)
+│   ├── secrets.h.template     # Template credentials
+│   ├── wifi_test/             # Test koneksi WiFi
+│   └── README.md              # 📘 Dokumentasi firmware
+│
+├── flutter_dashboard/          # Aplikasi dashboard (Flutter)
 │   ├── lib/
-│   │   ├── main.dart
-│   │   └── firebase_options.dart
-│   └── README.md           # 📗 Dokumentasi Flutter app
-├── .github/workflows/      # GitHub Actions CI
-├── .gitignore
-├── .gitattributes
+│   │   ├── main.dart          # Entry point, init Firebase + Supabase
+│   │   ├── app.dart           # Root widget & navigasi bottom bar
+│   │   ├── config/            # Konfigurasi (SupabaseConfig)
+│   │   ├── models/            # Data model (Firebase + Supabase)
+│   │   ├── pages/             # Halaman fitur
+│   │   │   ├── home/          # Dashboard utama real-time
+│   │   │   ├── statistics/    # Data historis & grafik
+│   │   │   ├── carbon/        # Tracking emisi CO2
+│   │   │   ├── radar/         # Kontrol & visualisasi radar
+│   │   │   └── settings/      # Konfigurasi aplikasi
+│   │   ├── services/          # Business logic & integrasi database
+│   │   ├── widgets/           # Shared UI components
+│   │   └── theme/             # Tema Material Design 3
+│   ├── test/                  # Unit & widget test
+│   └── README.md              # 📗 Dokumentasi Flutter
+│
+├── functions/                  # Cloud Functions (Firebase - TypeScript)
+│   ├── src/index.ts           # Triggers: onLampChange, onEnergyUpdate, onRadarChange
+│   ├── package.json
+│   └── tsconfig.json
+│
+├── supabase/                   # Database Supabase (PostgreSQL)
+│   ├── config.toml            # Konfigurasi CLI lokal
+│   ├── schema.sql             # Schema utama (4 tabel)
+│   └── migrations/            # Migrasi database
+│
+├── .github/workflows/         # CI/CD (Flutter CI)
+├── .github/ISSUE_TEMPLATE/    # Template issue (bug report & feature request)
+├── firebase.json              # Konfigurasi Firebase
+├── firestore.rules            # Aturan Firestore
+├── database.rules.json        # Aturan Realtime Database
+├── MIGRATION_GUIDE.md         # 📘 Panduan migrasi Firebase → Supabase
+├── SUPABASE_MIGRATION_GUIDE.md# Panduan teknis migrasi detail
+├── QUICKSTART_SUPABASE.md     # Panduan setup cepat Supabase (30 menit)
 ├── LICENSE
-└── README.md               # 📖 Dokumentasi utama (ini)
+└── README.md                  # 📖 Dokumentasi utama (ini)
 ```
 
 ### 📚 Dokumentasi Lengkap
 
-- **[ESP32 IoT Documentation](esp32_iot/README.md)** - Hardware wiring, pin configuration, Firebase setup, dan troubleshooting
-- **[Flutter Dashboard Documentation](flutter_dashboard/README.md)** - App features, installation guide, dan API reference
+| Dokumen | Isi |
+|---------|-----|
+| **[ESP32 IoT README](esp32_iot/README.md)** | Wiring hardware, pin konfigurasi, compile/upload, troubleshooting |
+| **[Flutter Dashboard README](flutter_dashboard/README.md)** | Fitur aplikasi, arsitektur, dependency, build guide |
+| **[MIGRATION_GUIDE.md](MIGRATION_GUIDE.md)** | Panduan migrasi dari Firebase ke Supabase (bahasa Indonesia) |
+| **[SUPABASE_MIGRATION_GUIDE.md](SUPABASE_MIGRATION_GUIDE.md)** | Technical battle plan migrasi (English, detail) |
+| **[QUICKSTART_SUPABASE.md](QUICKSTART_SUPABASE.md)** | Setup Supabase dalam 30 menit |
 
-## Kebutuhan Hardware
+---
+
+## 🛠️ Komponen & Arsitektur
+
+### 🔧 Kebutuhan Hardware
 
 | Komponen | Spesifikasi | Keterangan |
 |----------|-------------|------------|
-| ESP32 | Dev Board (30/38 pin) | Microcontroller dengan WiFi |
-| Sensor Radar HLK-LD2410C | 5V, UART + digital OUT | Deteksi gerakan (gate < 75cm) |
-| Relay Module | 1-channel 5V | Kontrol lampu |
+| ESP32 | Dev Board (30/38 pin) | Microcontroller dengan WiFi + Bluetooth |
+| Sensor Radar HLK-LD2410C | 24GHz mmWave, UART + digital OUT | Deteksi presence (hingga 9 gate/6m) |
+| Relay Module | 1-channel 5V (Active LOW) | Kontrol lampu/LED |
 | Lampu LED | 3W (simulasi) | Beban yang dikontrol |
-| Kabel Jumper | Male-Female / Male-Male | Koneksi komponen |
+| Power Supply | 5V / 2A | Catu daya ESP32 + relay |
 
-### Wiring
+### Pin Wiring
 
 | Pin ESP32 | Terhubung ke |
 |-----------|-------------|
-| GPIO 14 | OUT Sensor Radar |
-| GPIO 16 | RX (UART) Sensor Radar |
-| GPIO 17 | TX (UART) Sensor Radar |
-| GPIO 27 | IN Relay Module |
-| 5V / 3.3V | VCC Sensor Radar & Relay |
+| GPIO 14 | OUT (Digital) Sensor Radar |
+| GPIO 16 | RX (UART) → TX Sensor Radar |
+| GPIO 17 | TX (UART) → RX Sensor Radar |
+| GPIO 27 | IN Relay Module (Active LOW) |
+| 5V | VCC Sensor Radar & Relay |
 | GND | GND Sensor Radar & Relay |
 
-### Logika Deteksi
+### 🧠 Logika Deteksi
 
-Sistem menggunakan **threshold counter** dengan delay loop 50ms:
-- **HIGH stabil ≥10x** (~0.5 detik) → lampu menyala
-- **LOW stabil ≥20x** (~1.0 detik) → lampu mati
+Sistem menggunakan **threshold counter** dengan delay *loop* 50ms:
+- **HIGH stabil ≥10x** (~0.5 detik) → relay ON → lampu menyala
+- **LOW stabil ≥20x** (~1.0 detik) → relay OFF → lampu mati
+- **Gate 0** = deteksi radius < 75 cm (bisa dikonfigurasi via Firebase)
 
-## Setup Firebase
+---
 
-Project Firebase sudah dibuat: **`kicaw-smart-room`**
+## ☁️ Backend Architecture
 
-### Konfigurasi Realtime Database
+Proyek menggunakan arsitektur **dual-backend**:
 
-1. Buka [Firebase Console](https://console.firebase.google.com/project/kicaw-smart-room/overview)
-2. Pilih **Realtime Database** → **Rules**
-3. Atur rules (untuk testing):
+### Firebase Realtime Database (Live Data)
+- **Fungsi**: Menyimpan status real-time (lampu, radar, heartbeat, energi)
+- **Streaming**: Flutter menggunakan `.onValue` untuk update instan
+- **Path**: `ruangan_01/{status_lampu, status_radar, energi_dihemat_wh, co2_dicegah_mg, last_heartbeat}`
 
-```json
-{
-  "rules": {
-    ".read": "true",
-    ".write": "true"
-  }
-}
-```
+### Firebase Firestore (Aggregated Logs)
+- **Daily Logs**: Ringkasan harian energi & CO2
+- **Monthly Logs**: Agregasi bulanan
+- **Activity Logs**: Event log (lamp on/off, radar change)
+- **Cloud Functions**: Trigger otomatis saat data di RTDB berubah
 
-## Setup ESP32 (Arduino CLI)
+### Supabase PostgreSQL (Historical & Analytics)
 
-**📘 Dokumentasi lengkap: [ESP32 IoT README](esp32_iot/README.md)**
+| Tabel | Fungsi |
+|-------|--------|
+| `room_status` | Status live ruangan (single row, id=1) |
+| `sensor_logs` | Riwayat sensor per 5 detik |
+| `daily_summaries` | Agregasi harian (avg, max, min) |
+| `activity_logs` | Event: motion_detected, lamp_on, dll |
 
-### Quick Start
+Semua tabel menggunakan **Row Level Security (RLS)** dengan policy anon read/insert/update.
 
-1. Masuk ke folder `esp32_iot/`
-2. Edit `secrets.h` dengan WiFi, Firebase, dan Supabase credentials Anda:
+### Firebase Cloud Functions (TypeScript)
 
-```cpp
-// WiFi
-#define WIFI_SSID "YOUR_WIFI_SSID"
-#define WIFI_PASSWORD "YOUR_WIFI_PASSWORD"
+| Function | Trigger | Fungsi |
+|----------|---------|--------|
+| `onLampChange` | `status_lampu` berubah | Catat activity log, hitung energi, update daily/monthly |
+| `onEnergyUpdate` | `energi_dihemat_wh` berubah | Update daily log & monthly log (incremental) |
+| `onRadarChange` | `status_radar` berubah | Catat event presence/empty |
 
-// Firebase (jika masih pakai)
-#define API_KEY "your-firebase-api-key"
-#define DATABASE_URL "https://your-project.firebaseio.com"
+---
 
-// Supabase
-#define SUPABASE_URL "https://xxxxx.supabase.co"
-#define SUPABASE_ANON_KEY "eyJhbGc..."
-```
+## 📊 Parameter Emisi
 
-3. Compile firmware:
-
-```bash
-arduino-cli compile --fqbn esp32:esp32:esp32 esp32_iot.ino
-```
-
-5. Cari port ESP32:
-
-```bash
-arduino-cli board list
-```
-
-6. Upload ke ESP32:
-
-```bash
-arduino-cli upload -p /dev/ttyUSB0 --fqbn esp32:esp32:esp32 esp32_iot.ino
-```
-
-7. Monitor serial output:
-
-```bash
-arduino-cli monitor -p /dev/ttyUSB0 -c baudrate=115200
-```
-
-> **Perlu panduan lengkap?** Lihat [dokumentasi ESP32 lengkap](esp32_iot/README.md) untuk wiring diagram, troubleshooting, dan alur compile → upload → monitor → Flutter.
-
-## Setup Flutter Dashboard
-
-**📗 Dokumentasi lengkap: [Flutter Dashboard README](flutter_dashboard/README.md)**
-
-### Quick Start
-
-### Prasyarat
-- Flutter SDK (>=3.0)
-- Sudah menjalankan `flutterfire configure` (file `firebase_options.dart` sudah tersedia)
-
-### Instalasi
-
-```bash
-cd flutter_dashboard
-flutter pub get
-# Hapus komentar Firebase.initializeApp() di lib/main.dart sudah dilakukan
-flutter run
-```
-
-> **Catatan untuk Linux**: Jika `flutterfire configure` perlu dijalankan ulang:
-> ```bash
-> dart pub global activate flutterfire_cli
-> flutterfire configure --project=kicaw-smart-room
-> ```
-
-> **Perlu panduan lengkap?** Lihat [dokumentasi Flutter lengkap](flutter_dashboard/README.md) untuk architecture, features, dan development guide.
-
-## Parameter Emisi
-
-Perhitungan emisi CO2 yang dicegah berdasarkan jurnal Singh & Dhanekar (2026):
+Perhitungan emisi CO₂ berdasarkan Singh & Dhanekar (2026):
 
 | Parameter | Nilai | Satuan |
 |-----------|-------|--------|
-| Daya lampu simulasi | 3 | Watt |
-| Faktor emisi grid | 0.85 | kg CO2/kWh |
+| Daya lampu simulasi (`DAYA_LAMPU_WATT`) | 3.0 | Watt |
+| Faktor emisi grid (`FAKTOR_EMISI_GRID`) | 0.85 | kg CO₂/kWh |
 | Energi dihemat | `P × t` | Wh |
-| CO2 dicegah | `(Wh / 1000) × 0.85 × 1.000.000` | mg |
+| CO₂ dicegah | `(Wh / 1000) × 0.85 × 1.000.000` | mg |
+| Setara pohon | `CO₂ kg / 21` | pohon/hari |
+| Setara mobil | `CO₂ kg / 0.12` | km |
+| Setara cas HP | `Wh / 15` | kali cas |
 
-## Kontribusi
+---
+
+## 🚀 Quick Start
+
+### 1. Setup Database
+
+#### Firebase
+1. Buka [Firebase Console](https://console.firebase.google.com/project/kicaw-smart-room/overview)
+2. Aktifkan **Realtime Database** dan **Firestore**
+3. Deploy Cloud Functions:
+   ```bash
+   cd functions
+   npm install
+   npm run build
+   npm run deploy
+   ```
+
+#### Supabase
+1. Buka [supabase.com](https://supabase.com) → Create project (region: Singapore)
+2. Buka **SQL Editor** → paste isi `supabase/schema.sql` → Run
+3. Catat **Project URL** dan **anon public key** dari Settings → API
+4. Lihat panduan lengkap: [QUICKSTART_SUPABASE.md](QUICKSTART_SUPABASE.md)
+
+### 2. Setup ESP32
+
+```bash
+cd esp32_iot
+
+# 1. Buat file secrets.h dari template
+cp secrets.h.template secrets.h
+
+# 2. Edit secrets.h — isi WiFi, Firebase, dan Supabase credentials
+
+# 3. Compile & upload
+arduino-cli compile --fqbn esp32:esp32:esp32 esp32_iot.ino
+arduino-cli upload -p /dev/ttyUSB0 --fqbn esp32:esp32:esp32 esp32_iot.ino
+
+# 4. Monitor serial
+arduino-cli monitor -p /dev/ttyUSB0 -c baudrate=115200
+```
+
+📘 **Dokumentasi lengkap**: [ESP32 README](esp32_iot/README.md)
+
+### 3. Setup Flutter Dashboard
+
+```bash
+cd flutter_dashboard
+
+# 1. Konfigurasi environment
+cp .env.example .env
+# Edit .env dengan credentials Supabase & Firebase
+
+# 2. Install dependencies
+flutter pub get
+
+# 3. Jalankan aplikasi
+flutter run
+```
+
+📗 **Dokumentasi lengkap**: [Flutter README](flutter_dashboard/README.md)
+
+---
+
+## 📱 Fitur Dashboard
+
+| Halaman | Fitur | Sumber Data |
+|---------|-------|-------------|
+| **🏠 Home** | Status ruangan real-time, indikator motion, energi, aktivitas terbaru | Firebase RTDB + Supabase |
+| **📊 Statistics** | Grafik 30 hari, total all-time, target bulanan, best day card | Firestore (daily/monthly logs) |
+| **🌿 Carbon** | CO₂ tracking, real-world equivalents (pohon, mobil, cas HP) | Firebase RTDB + CarbonService |
+| **📡 Radar** | Visualisasi gate, sensitivitas per gate, engineering mode | Firebase RTDB (radar_config) |
+| **⚙️ Settings** | Tema, notifikasi, otomasi, device info | SharedPreferences + Firebase |
+
+---
+
+## 🧪 CI/CD
+
+Proyek menggunakan **GitHub Actions** untuk:
+- **Flutter CI**: Analisis kode (`flutter analyze`) + testing (`flutter test`) otomatis
+  - Trigger: Push/PR ke branch `master` dengan perubahan di `flutter_dashboard/**`
+  - Konfigurasi: [`.github/workflows/flutter_ci.yml`](.github/workflows/flutter_ci.yml)
+
+---
+
+## 🔐 Pengelolaan Credentials
+
+### ESP32 (`secrets.h`)
+- File sudah di-**gitignore** — tidak akan tercommit
+- Isi: WiFi SSID/Password, Firebase API Key/URL, Supabase URL/Anon Key
+- Lihat template: [`secrets.h.template`](esp32_iot/secrets.h.template)
+
+### Flutter (`.env`)
+- File `.env` sudah di-**gitignore**
+- Isi: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `FIREBASE_API_KEY`, `FIREBASE_DATABASE_URL`
+- Lihat template: [`.env.example`](flutter_dashboard/.env.example)
+
+### Firebase (`google-services.json`)
+- File `google-services.json` sudah di-**gitignore**
+- Generate dengan: `flutterfire configure`
+
+---
+
+## 📊 Panduan Presentasi Dosen
+
+Jika dosen meminta kode program dilampirkan di dalam slide presentasi Canva secara interaktif:
+
+### Embed GitHub Gist ke Canva
+1. Buka [gist.github.com](https://gist.github.com) (login GitHub)
+2. Buat **public gist** (tempel kode penting, misal `ld2410_uart.h`)
+3. Salin URL gist
+4. Di Canva: **Apps** → **Embeds** → tempel URL → **Add to design**
+
+> **Catatan**: Metode ini butuh koneksi internet saat presentasi.
+
+---
+
+## 🤝 Kontribusi
 
 1. Fork repo ini
 2. Buat branch baru: `git checkout -b fitur-anda`
@@ -188,6 +307,8 @@ Perhitungan emisi CO2 yang dicegah berdasarkan jurnal Singh & Dhanekar (2026):
 4. Push ke branch: `git push origin fitur-anda`
 5. Buat Pull Request
 
-## LICENSE
+---
+
+## 📄 Lisensi
 
 [MIT](LICENSE) © 2026 terra2n

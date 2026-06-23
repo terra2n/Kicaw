@@ -35,11 +35,11 @@ class NotificationService {
   factory NotificationService() => _instance;
   NotificationService._();
 
-  final FirebaseMessaging _fcm = FirebaseMessaging.instance;
+  FirebaseMessaging get _fcm => FirebaseMessaging.instance;
   final FlutterLocalNotificationsPlugin _local =
       FlutterLocalNotificationsPlugin();
   final RealtimeService _rt = RealtimeService();
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  FirebaseFirestore get _firestore => FirebaseFirestore.instance;
 
   SettingsService? _settings;
   StreamSubscription? _occupancySub;
@@ -177,5 +177,6 @@ class NotificationService {
     _occupancySub?.cancel();
     _onMessageSub?.cancel();
     _onMessageOpenedAppSub?.cancel();
+    _rt.dispose();
   }
 }

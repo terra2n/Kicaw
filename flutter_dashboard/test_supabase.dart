@@ -1,7 +1,12 @@
+import 'dart:io';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 Future<void> main() async {
+  // Mock SharedPreferences values for testing
+  SharedPreferences.setMockInitialValues({});
+
   print('🧪 Testing Supabase Connection...\n');
 
   // Load environment variables
@@ -28,6 +33,9 @@ Future<void> main() async {
     await Supabase.initialize(
       url: url,
       anonKey: key,
+      authOptions: FlutterAuthClientOptions(
+        localStorage: const EmptyLocalStorage(),
+      ),
     );
     print('✅ Supabase client initialized\n');
 
@@ -58,7 +66,7 @@ Future<void> main() async {
     final logs = await client
         .from('sensor_logs')
         .select()
-        .order('created_at', ascending: false)
+        .order('recorded_at', ascending: false)
         .limit(1);
 
     if (logs.isNotEmpty) {
@@ -89,17 +97,21 @@ Future<void> main() async {
     print('🎉 All connection tests passed!');
     print('✅ Supabase is properly configured and accessible');
     print('=' * 50);
+    exit(0);
 
   } on PostgrestException catch (e) {
     print('❌ Database error: ${e.message}');
     print('   Code: ${e.code}');
     print('   Details: ${e.details}');
     print('\n💡 Tip: Make sure you ran the schema.sql in Supabase SQL Editor');
+    exit(1);
   } on AuthException catch (e) {
     print('❌ Authentication error: ${e.message}');
     print('\n💡 Tip: Check your SUPABASE_ANON_KEY in .env file');
+    exit(1);
   } catch (e) {
     print('❌ Unexpected error: $e');
     print('\n💡 Tip: Check your internet connection and Supabase URL');
+    exit(1);
   }
 }

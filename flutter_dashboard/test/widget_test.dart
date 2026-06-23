@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:dashboard_eco2/app.dart';
@@ -13,5 +14,8 @@ void main() {
 
     await tester.pumpWidget(App(settingsService: settings, notificationService: notif));
     expect(find.byType(App), findsOneWidget);
+
+    // Unmount App to trigger dispose() on all page states
+    await tester.pumpWidget(Container());
   });
 }

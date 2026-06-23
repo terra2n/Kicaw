@@ -87,11 +87,15 @@ class _CarbonPageState extends State<CarbonPage> {
     );
   }
 
+
+
   Widget _buildTotalCo2Hero() {
     if (_dailySummaries == null || _dailySummaries!.isEmpty) return const SizedBox.shrink();
 
     final totalLampMinutes = _dailySummaries!.fold<int>(0, (sum, s) => sum + s.lampOnMinutes);
-    final totalCo2Grams = totalLampMinutes * (3.0 / 60.0) * 0.85;
+    final totalDays = _dailySummaries!.length;
+    final totalLampOffMinutes = (totalDays * 1440) - totalLampMinutes;
+    final totalCo2Grams = totalLampOffMinutes * (3.0 / 60.0) * 0.85;
     return TotalCo2Hero(co2Grams: totalCo2Grams);
   }
 
