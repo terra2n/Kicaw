@@ -209,41 +209,6 @@ void pushKeFirebase() {
   Database.set<String>(async_client, "ruangan_01/last_heartbeat_ts", getTimestamp());
 }
 
-// =========================================================================
-// FUNGSI: Push data ke Supabase
-// =========================================================================
-void pushKeSupabase() {
-  if (!supabaseClient) return;
-
-  // Bug #8 fix: Kirim data yang benar sesuai kolom
-  // Hardware saat ini: Radar (motion + lamp) — belum ada sensor suhu/humidity/CO2
-  // Kirim 0.0 untuk sensor yang belum tersedia (bukan data yang salah konteks)
-  bool success = supabaseClient->updateRoomStatus(
-    lampuNyala,         // lamp_status — BENAR
-    radarTerdeteksi,    // motion_detected — BENAR
-    0.0f,               // temperature_c — sensor belum ada, kirim 0
-    0.0f,               // humidity_percent — sensor belum ada, kirim 0
-    0                   // co2_ppm — sensor belum ada, kirim 0
-  );
-
-  if (success) {
-    Serial.println("[SUPABASE] room_status updated");
-  }
-
-  // Insert sensor log (historical data)
-  // Bug #14 fix: Tidak ada timer ganda di sini — timing dikelola oleh loop() (setiap 5 detik)
-  success = supabaseClient->insertSensorLog(
-    lampuNyala,
-    radarTerdeteksi,
-    0.0f,    // temperature_c
-    0.0f,    // humidity_percent
-    0        // co2_ppm
-  );
-
-  if (success) {
-    Serial.println("[SUPABASE] sensor_log inserted");
-  }
-}
 
 // =========================================================================
 // FUNGSI: Log activity ke Supabase (motion/lamp changes)
@@ -256,6 +221,19 @@ void logActivitySupabase(const String& eventType, const String& description) {
   if (success) {
     Serial.printf("[SUPABASE] Activity logged: %s\n", eventType.c_str());
   }
+}
+
+// =========================================================================
+// FUNGSI: Push data sensor dan room status ke Supabase
+// =========================================================================
+void pushKeSupabase() {
+  if (!supabaseReady || !supabaseClient) return;
+
+  // Update room status (UPSERT)
+  supabaseClient->updateRoomStatus(lampuNyala, radarTerdeteksi);
+
+  // Insert historical sensor log
+  supabaseClient->insertSensorLog(lampuNyala, radarTerdeteksi);
 }
 
 // =========================================================================
@@ -420,12 +398,16 @@ void loop() {
         initFirebaseServices();
       }
       if (!supabaseReady) {
-        // [ESP-C5 fix] Hapus client lama agar bisa reconnect bersih
-        if (supabaseClient) {
-          delete supabaseClient;
-          supabaseClient = nullptr;
+        static unsigned long lastSupabaseRetry = 0;
+        unsigned long nowMs = millis();
+        if (nowMs - lastSupabaseRetry >= 30000 || lastSupabaseRetry == 0) {
+          lastSupabaseRetry = nowMs;
+          if (supabaseClient) {
+            delete supabaseClient;
+            supabaseClient = nullptr;
+          }
+          initSupabase();
         }
-        initSupabase();
       }
       break;
 

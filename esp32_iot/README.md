@@ -69,6 +69,7 @@ ESP32                    Relay Module
 
 **Required Libraries** (via Library Manager / Arduino CLI environment):
 - **FirebaseClient** by Mobizt (v1.3.0+)
+- **ArduinoJson** by Benoit Blanchon (v6.20.0+ / v7.0.0+)
 - **WiFi** (built-in)
 - **WiFiClientSecure** (built-in)
 
@@ -325,6 +326,12 @@ energyDelta_Wh = (DAYA_LAMPU_WATT × duration_ms) / 3600000
 co2Delta_mg = energyDelta_Wh × FAKTOR_EMISI_GRID
 ```
 
+### 4. Recent Improvements & Optimizations
+
+* **Non-Blocking Supabase Reconnection:** Previously, if Supabase failed to connect, the main loop would block for 5 seconds on every iteration. We added a non-blocking 30-second retry timer, allowing the radar occupancy sensor to remain highly responsive even during backend connectivity issues.
+* **ArduinoJson Config & Parsing:** Replaced legacy unsafe string parsing (`cmdParseIntParam` substring indexing) with robust JSON deserialization via `ArduinoJson` to ensure configuration commands are parsed reliably.
+* **Engineering Data Payload Optimization:** Active engineering mode transmits 22 variables. Instead of triggering individual network requests for each variable (which caused socket exhaustion and flooding), the firmware now serializes all variables into a single JSON object and updates the database in a single transaction.
+
 ## 🛠️ Troubleshooting
 
 ### Issue: WiFi Connection Failed
@@ -343,12 +350,15 @@ Serial.println(WiFi.localIP());  // Should print valid IP
 
 **Check:**
 - `API_KEY` and `DATABASE_URL` are correct
-- Firebase Realtime Database rules allow writes:
+- Firebase Realtime Database rules allow writes on the correct path:
   ```json
   {
     "rules": {
-      ".read": true,
-      ".write": true
+      "ruangan_01": {
+        ".read": true,
+        ".write": true,
+        ".indexOn": ["timestamp"]
+      }
     }
   }
   ```
@@ -383,9 +393,11 @@ digitalWrite(PIN_RELAY, HIGH);  // Should turn OFF
 
 ```
 esp32_iot/
-├── esp32_iot.ino         # Main firmware
-├── firebase_cmd.h        # Firebase command handlers (radar config)
+├── esp32_iot.ino         # Main firmware (manages loops, dual-write to Firebase & Supabase)
+├── firebase_cmd.h        # Firebase command handlers & config parser (via ArduinoJson)
+├── supabase_client.h     # Supabase client helper (updates room status, logs, & activity)
 ├── ld2410_uart.h         # HLK-LD2410C UART protocol library
+├── secrets.h             # WiFi & Cloud databases credentials (git-ignored)
 └── README.md             # This file
 ```
 

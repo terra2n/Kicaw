@@ -71,39 +71,37 @@ public:
         }
     }
 
+
+
     // Update room_status table (UPSERT - create or update)
-    // Bug #1 fix: Removed "now()" string - DB handles updated_at via DEFAULT NOW()
-    // Bug #2 fix: Use Prefer: resolution=merge-duplicates header for proper UPSERT
-    bool updateRoomStatus(bool lampOn, bool motionDetected, float temperature, float humidity, int co2ppm) {
+    // Send only available sensors to avoid corrupting database aggregates
+    bool updateRoomStatus(bool lampOn, bool motionDetected, float* temperature = nullptr, float* humidity = nullptr, int* co2ppm = nullptr) {
         JsonDocument doc;
-        doc["id"] = 1;  // Fixed ID — tabel room_status hanya punya 1 baris
+        doc["id"] = 1;  // Fixed ID — room_status table has only 1 row
         doc["lamp_status"] = lampOn;
         doc["motion_detected"] = motionDetected;
-        doc["temperature_c"] = temperature;
-        doc["humidity_percent"] = humidity;
-        doc["co2_ppm"] = co2ppm;
-        // updated_at tidak perlu dikirim — PostgreSQL isi otomatis via DEFAULT NOW()
+        if (temperature != nullptr) doc["temperature_c"] = *temperature;
+        if (humidity != nullptr) doc["humidity_percent"] = *humidity;
+        if (co2ppm != nullptr) doc["co2_ppm"] = *co2ppm;
 
         String payload;
         serializeJson(doc, payload);
 
         Serial.printf("[SUPABASE] Updating room_status: %s\n", payload.c_str());
 
-        // UPSERT: jika id=1 sudah ada maka UPDATE, jika belum ada maka INSERT
+        // UPSERT: if id=1 exists then UPDATE, otherwise INSERT
         return makeRequest("POST", "/rest/v1/room_status", payload,
                            "return=minimal,resolution=merge-duplicates");
     }
 
     // Insert sensor log (historical data)
-    // Bug #1 fix: Removed "recorded_at": "now()" — DB handles it via DEFAULT NOW()
-    bool insertSensorLog(bool lampOn, bool motionDetected, float temperature, float humidity, int co2ppm) {
+    bool insertSensorLog(bool lampOn, bool motionDetected, float* temperature = nullptr, float* humidity = nullptr, int* co2ppm = nullptr) {
         JsonDocument doc;
         doc["lamp_status"] = lampOn;
         doc["motion_detected"] = motionDetected;
-        doc["temperature_c"] = temperature;
-        doc["humidity_percent"] = humidity;
-        doc["co2_ppm"] = co2ppm;
-        // recorded_at tidak perlu dikirim — PostgreSQL isi otomatis via DEFAULT NOW()
+        if (temperature != nullptr) doc["temperature_c"] = *temperature;
+        if (humidity != nullptr) doc["humidity_percent"] = *humidity;
+        if (co2ppm != nullptr) doc["co2_ppm"] = *co2ppm;
 
         String payload;
         serializeJson(doc, payload);

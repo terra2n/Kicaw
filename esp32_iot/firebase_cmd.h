@@ -81,17 +81,26 @@ void cmdPushConfigResult(RadarConfig *cfg) {
 void cmdPushEngData(EngData *eng) {
   if (!app.ready() || !eng || !eng->valid) return;
 
-  Database.set<uint16_t>(async_client, String(FB_CMD_ENG_DATA) + "/presence_distance_cm", eng->presence_distance_cm);
-  Database.set<uint16_t>(async_client, String(FB_CMD_ENG_DATA) + "/moving_distance_cm", eng->moving_distance_cm);
-  Database.set<uint16_t>(async_client, String(FB_CMD_ENG_DATA) + "/stationary_distance_cm", eng->stationary_distance_cm);
+  JsonDocument doc;
+  doc["presence_distance_cm"] = eng->presence_distance_cm;
+  doc["moving_distance_cm"] = eng->moving_distance_cm;
+  doc["stationary_distance_cm"] = eng->stationary_distance_cm;
 
+  JsonObject energy = doc["energy"].to<JsonObject>();
   for (int g = 0; g < 9; g++) {
-    String ePath = String(FB_CMD_ENG_DATA) + "/energy/g" + g;
-    Database.set<uint8_t>(async_client, ePath + "/moving", eng->moving_energy[g]);
-    Database.set<uint8_t>(async_client, ePath + "/stationary", eng->stationary_energy[g]);
+    String gKey = "g" + String(g);
+    JsonObject gate = energy[gKey].to<JsonObject>();
+    gate["moving"] = eng->moving_energy[g];
+    gate["stationary"] = eng->stationary_energy[g];
   }
 
-  Database.set<String>(async_client, String(FB_CMD_ENG_DATA) + "/timestamp", getTimestamp());
+  doc["timestamp"] = getTimestamp();
+
+  String payload;
+  serializeJson(doc, payload);
+
+  // Push the entire JSON object in one single request to avoid socket exhaustion
+  Database.set<object_t>(async_client, FB_CMD_ENG_DATA, object_t(payload));
 }
 
 // =========================================================================
@@ -105,28 +114,17 @@ void cmdPushFirmware(uint8_t major, uint8_t minor, uint32_t bugfix) {
 }
 
 // =========================================================================
-// PARSE PARAMETER JSON SEDERHANA
+// PARSE PARAMETER JSON AMAN MENGGUNAKAN ARDUINOJSON
 // =========================================================================
 int cmdParseIntParam(const String &json, const String &key, int defaultVal) {
-  int idx = json.indexOf(key);
-  if (idx == -1) return defaultVal;
+  JsonDocument doc;
+  DeserializationError error = deserializeJson(doc, json);
+  if (error) return defaultVal;
 
-  idx = json.indexOf(':', idx);
-  if (idx == -1) return defaultVal;
-
-  idx++; // skip ':'
-  while (idx < (int)json.length() && (json[idx] == ' ' || json[idx] == '\t')) idx++;
-
-  bool neg = false;
-  if (json[idx] == '-') { neg = true; idx++; }
-
-  int val = 0;
-  while (idx < (int)json.length() && json[idx] >= '0' && json[idx] <= '9') {
-    val = val * 10 + (json[idx] - '0');
-    idx++;
+  if (doc.containsKey(key)) {
+    return doc[key].as<int>();
   }
-
-  return neg ? -val : val;
+  return defaultVal;
 }
 
 // =========================================================================
