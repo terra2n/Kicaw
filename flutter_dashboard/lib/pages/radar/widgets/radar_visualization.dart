@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import '../../../theme/app_colors.dart';
 
 /// A visual representation of radar detection zones
@@ -217,8 +218,8 @@ class _RadarPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _RadarPainter oldDelegate) {
-    return oldDelegate.movingSensitivity != movingSensitivity ||
-        oldDelegate.stationarySensitivity != stationarySensitivity ||
+    return !listEquals(oldDelegate.movingSensitivity, movingSensitivity) ||
+        !listEquals(oldDelegate.stationarySensitivity, stationarySensitivity) ||
         oldDelegate.activeTab != activeTab ||
         oldDelegate.maxMovingGate != maxMovingGate ||
         oldDelegate.maxStationaryGate != maxStationaryGate;

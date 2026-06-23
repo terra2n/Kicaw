@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -42,6 +43,8 @@ class NotificationService {
 
   SettingsService? _settings;
   StreamSubscription? _occupancySub;
+  StreamSubscription? _onMessageSub;
+  StreamSubscription? _onMessageOpenedAppSub;
   bool _localEnabled = true;
   bool _pushEnabled = true;
   bool _wasOccupied = false;
@@ -81,7 +84,7 @@ class NotificationService {
               .set({'token': token, 'updated_at': DateTime.now().toIso8601String()});
         }
       } catch (e) {
-        print('Error getting FCM token: $e');
+        debugPrint('Error getting FCM token: $e');
       }
     }
 
@@ -123,7 +126,7 @@ class NotificationService {
   }
 
   void _listenFCM() {
-    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+    _onMessageSub = FirebaseMessaging.onMessage.listen((RemoteMessage message) {
       if (!_pushEnabled) return;
       final notif = message.notification;
       if (notif != null) {
@@ -144,7 +147,7 @@ class NotificationService {
       }
     });
 
-    FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+    _onMessageOpenedAppSub = FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
       // handle tap, e.g., navigate to specific page
     });
 
@@ -172,5 +175,7 @@ class NotificationService {
 
   void dispose() {
     _occupancySub?.cancel();
+    _onMessageSub?.cancel();
+    _onMessageOpenedAppSub?.cancel();
   }
 }

@@ -57,7 +57,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
                     const FadeSlide(index: 0, child: SectionHeader(title: 'MONTHLY TARGETS')),
                     FadeSlide(index: 1, child: _summaries == null || _summaries!.isEmpty
                         ? const ErrorBanner(message: 'Targets unavailable')
-                        : const MonthlyTargets(co2Percent: 50, energyPercent: 30)),
+                        : _buildMonthlyTargets()),
                     const SizedBox(height: 24),
                     const FadeSlide(index: 2, child: SectionHeader(title: 'CO₂ TREND — 30 DAYS')),
                     FadeSlide(index: 3, child: _summaries == null
@@ -88,6 +88,25 @@ class _StatisticsPageState extends State<StatisticsPage> {
                 ),
               ),
       ),
+    );
+  }
+
+  Widget _buildMonthlyTargets() {
+    if (_summaries == null || _summaries!.isEmpty) return const SizedBox.shrink();
+
+    final totalLampMinutes = _summaries!.fold<int>(0, (sum, s) => sum + s.lampOnMinutes);
+    final totalWhSaved = totalLampMinutes * (3.0 / 60.0);
+    final totalCo2Grams = totalWhSaved * 0.85;
+
+    const targetMonthlyGrams = 50.0;
+    const targetMonthlyWh = 1000.0;
+
+    final co2Percent = (totalCo2Grams / targetMonthlyGrams) * 100;
+    final energyPercent = (totalWhSaved / targetMonthlyWh) * 100;
+
+    return MonthlyTargets(
+      co2Percent: co2Percent,
+      energyPercent: energyPercent,
     );
   }
 

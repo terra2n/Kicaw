@@ -19,6 +19,14 @@ class DecorativeImageCard extends StatelessWidget {
               fit: BoxFit.cover,
               color: Colors.grey,
               colorBlendMode: BlendMode.saturation,
+              errorBuilder: (context, error, stackTrace) {
+                return Container(
+                  color: Colors.grey[900],
+                  child: const Center(
+                    child: Icon(Icons.image_outlined, color: Colors.white24, size: 48),
+                  ),
+                );
+              },
             ),
             Container(
               decoration: const BoxDecoration(

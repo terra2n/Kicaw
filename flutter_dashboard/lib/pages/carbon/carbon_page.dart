@@ -90,22 +90,24 @@ class _CarbonPageState extends State<CarbonPage> {
   Widget _buildTotalCo2Hero() {
     if (_dailySummaries == null || _dailySummaries!.isEmpty) return const SizedBox.shrink();
 
-    final totalCo2Mg = _dailySummaries!.fold<double>(0, (sum, s) => sum + (s.avgCo2Ppm ?? 0));
-    return TotalCo2Hero(co2Mg: totalCo2Mg);
+    final totalLampMinutes = _dailySummaries!.fold<int>(0, (sum, s) => sum + s.lampOnMinutes);
+    final totalCo2Grams = totalLampMinutes * (3.0 / 60.0) * 0.85;
+    return TotalCo2Hero(co2Grams: totalCo2Grams);
   }
 
   Widget _buildRealWorldEquivalents() {
     if (_dailySummaries == null || _dailySummaries!.isEmpty) return const SizedBox.shrink();
 
-    final totalCo2Mg = _dailySummaries!.fold<double>(0, (sum, s) => sum + (s.avgCo2Ppm ?? 0));
-    return RealWorldEquivalents(co2Grams: totalCo2Mg / 1000.0);
+    final totalLampMinutes = _dailySummaries!.fold<int>(0, (sum, s) => sum + s.lampOnMinutes);
+    final totalCo2Grams = totalLampMinutes * (3.0 / 60.0) * 0.85;
+    return RealWorldEquivalents(co2Grams: totalCo2Grams);
   }
 
   Widget _buildDailyCo2Chart() {
     if (_dailySummaries == null || _dailySummaries!.isEmpty) return const SizedBox.shrink();
 
-    final co2MgValues = _dailySummaries!.reversed.map((s) => (s.avgCo2Ppm ?? 0).toDouble()).toList();
-    return DailyCo2Chart(co2MgValues: co2MgValues);
+    final co2GramsValues = _dailySummaries!.reversed.map((s) => (s.lampOnMinutes * (3.0 / 60.0) * 0.85).toDouble()).toList();
+    return DailyCo2Chart(co2GramsValues: co2GramsValues);
   }
 
   Widget _buildDetails() {
@@ -115,9 +117,10 @@ class _CarbonPageState extends State<CarbonPage> {
     final avgCo2 = _sensorLogs!.fold<double>(0, (sum, log) => sum + (log.co2Ppm ?? 0)) / _sensorLogs!.length;
 
     // Calculate total CO2 this month from daily summaries
-    final totalCo2Mg = _dailySummaries != null && _dailySummaries!.isNotEmpty
-        ? _dailySummaries!.fold<double>(0, (sum, s) => sum + (s.avgCo2Ppm ?? 0))
-        : 0.0;
+    final totalLampMinutes = _dailySummaries != null && _dailySummaries!.isNotEmpty
+        ? _dailySummaries!.fold<int>(0, (sum, s) => sum + s.lampOnMinutes)
+        : 0;
+    final totalCo2Grams = totalLampMinutes * (3.0 / 60.0) * 0.85;
 
     // Count lamp cycles from activity logs
     final lampCycles = _sensorLogs!.where((log) => log.lampStatus == true).length;
@@ -127,7 +130,7 @@ class _CarbonPageState extends State<CarbonPage> {
       const SizedBox(height: 8),
       const EmissionInfo(label: 'Grid factor', value: '850 g CO₂/kWh'),
       const SizedBox(height: 8),
-      EmissionInfo(label: 'Total this month', value: '${(totalCo2Mg / 1000).toStringAsFixed(2)} mg'),
+      EmissionInfo(label: 'Total this month', value: '${totalCo2Grams.toStringAsFixed(2)} g'),
       const SizedBox(height: 8),
       EmissionInfo(label: 'Lamp cycles', value: '$lampCycles on/off events'),
     ]);
