@@ -550,8 +550,6 @@ void loop() {
     Serial.println("[STATUS] Orang Terdeteksi. Lampu Menyala.");
     Serial.println("------------------------------------------------");
 
-    pushKeFirebase();
-
     // Log activity ke Supabase
     if (supabaseReady) {
       logActivitySupabase("lamp_on", "Lampu menyala karena ada orang terdeteksi");
@@ -569,15 +567,13 @@ void loop() {
     Serial.println("[STATUS] Kosong (1 Detik). Lampu Dimatikan.");
     Serial.println("------------------------------------------------");
 
-    pushKeFirebase();
-
     // Log activity ke Supabase
     if (supabaseReady) {
       logActivitySupabase("lamp_off", "Lampu dimatikan karena tidak ada orang");
     }
   }
 
-  // ── MONITORING & UPDATE FIREBASE setiap 5 detik saat lampu mati ──
+  // ── MONITORING & UPDATE FIREBASE setiap 5 detik ──
   if (sekarang - lastUpdateFirebase >= 5000) {
     lastUpdateFirebase = sekarang;
 
