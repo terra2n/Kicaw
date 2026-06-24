@@ -44,9 +44,9 @@ const float FAKTOR_EMISI_GRID = 0.85;
 
 // Threshold counter (delay loop = 50 ms):
 // - HIGH stabil 10x (0.5 detik) -> nyalakan lampu
-// - LOW  stabil 20x (1.0 detik) -> matikan lampu
+// - LOW  stabil 5x  (0.25 detik) -> matikan lampu
 const int THRESHOLD_MASUK  = 10;
-const int THRESHOLD_KOSONG = 20;
+const int THRESHOLD_KOSONG = 5;
 
 // =========================================================================
 // 4. KREDENSIAL WiFi, FIREBASE & SUPABASE
@@ -495,7 +495,11 @@ void loop() {
 
   // Cek command dari Firebase (setiap 500ms)
   if (firebaseReady) {
-    cmdCheckFirebase();
+    static unsigned long lastCmdCheck = 0;
+    if (sekarang - lastCmdCheck >= 500) {
+      lastCmdCheck = sekarang;
+      cmdCheckFirebase();
+    }
   }
 
   // Engineering mode loop (setiap 1 detik)
@@ -585,7 +589,7 @@ void loop() {
     }
   }
 
-  // ── KONDISI MATI: LOW stabil >= 20x (~1 detik) ──
+  // ── KONDISI MATI: LOW stabil >= 5x (~0.25 detik) ──
   if (hitungLow >= THRESHOLD_KOSONG && lampuNyala) {
     digitalWrite(PIN_RELAY, HIGH);
     lampuNyala     = false;
