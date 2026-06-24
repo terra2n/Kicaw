@@ -98,4 +98,12 @@ class RadarConfigService {
 
   /// Restart radar
   Future<void> restart() => sendCommand('restart_radar');
+
+  /// Nyalakan/matikan lampu langsung via relay
+  Future<void> setLampu(bool nyala) =>
+      sendCommand('set_lampu', params: {'nyala': nyala ? 1 : 0});
+
+  /// Mode test: lampu toggle setiap 3 detik
+  Future<void> setTestMode(bool aktif) =>
+      sendCommand('test_mode', params: {'aktif': aktif ? 1 : 0});
 }

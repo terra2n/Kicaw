@@ -35,6 +35,8 @@ class _RadarPageState extends State<RadarPage>
   bool _isLoading = false;
   bool _isEngActive = false;
   String _pendingEngCommand = '';
+  final _blePwdController = TextEditingController();
+  bool _showPwd = false;
 
   static const _tabLabels = ['All', 'Moving', 'Stationary'];
 
@@ -103,7 +105,8 @@ class _RadarPageState extends State<RadarPage>
     _configSub?.cancel();
     _engSub?.cancel();
     _cmdStatusSub?.cancel();
-    _loadingTimeout?.cancel();  // Bug #11 fix: Pastikan timer dibersihkan
+    _loadingTimeout?.cancel();
+    _blePwdController.dispose();
     _tabController.dispose();
     super.dispose();
   }
@@ -328,6 +331,9 @@ class _RadarPageState extends State<RadarPage>
 
                     const SizedBox(height: 16),
                     FadeSlide(index: 12, child: _buildDangerZone()),
+
+                    const SizedBox(height: 16),
+                    FadeSlide(index: 13, child: _buildBleSettingsCard()),
                     const SizedBox(height: 32),
                   ],
                 ),
@@ -1386,9 +1392,8 @@ class _RadarPageState extends State<RadarPage>
 
     final bleService = _manager.bleService;
     final isConnected = bleService.connectedDevice != null && bleService.isAuthenticated;
-    if (!isConnected) return const SizedBox.shrink();
-
-    final textController = TextEditingController();
+    final pwd = bleService.activePassword;
+    final hasOverride = bleService.hasPasswordOverride;
 
     return Card(
       margin: const EdgeInsets.only(top: 16),
@@ -1420,88 +1425,179 @@ class _RadarPageState extends State<RadarPage>
               ],
             ),
             const SizedBox(height: 12),
-            const Text(
-              'Ubah password BLE radar Anda. Password baru harus tepat 6 karakter. Radar akan otomatis di-restart setelah diubah.',
-              style: TextStyle(fontSize: 12, color: Colors.grey),
+
+            // Password saat ini
+            Row(
+              children: [
+                Text(
+                  'Password saat ini: ',
+                  style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+                ),
+                GestureDetector(
+                  onTap: () => setState(() => _showPwd = !_showPwd),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        _showPwd ? pwd : '••••••',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          fontFamily: 'monospace',
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Icon(
+                        _showPwd ? Icons.visibility_off : Icons.visibility,
+                        size: 16,
+                        color: Colors.grey,
+                      ),
+                    ],
+                  ),
+                ),
+                const Spacer(),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: hasOverride ? Colors.orange.withValues(alpha: 0.1) : Colors.green.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    hasOverride ? 'Override' : 'Default',
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: hasOverride ? Colors.orange : Colors.green,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
+
+            // Reset ke Default
+            if (hasOverride)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.restart_alt, size: 16),
+                  label: const Text('Reset ke Default (HiLink)'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.orange,
+                    side: BorderSide(color: Colors.orange.withValues(alpha: 0.3)),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                  onPressed: () async {
+                    await _manager.bleService.resetPassword();
+                    setState(() {});
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Password direset ke default dari .env'),
+                          backgroundColor: Colors.green,
+                          duration: Duration(seconds: 2),
+                        ),
+                      );
+                    }
+                  },
+                ),
+              ),
+
+            const Divider(height: 4),
+            const SizedBox(height: 8),
+
+            // Ubah password (hanya saat terhubung)
+            Text(
+              isConnected
+                  ? 'Ubah password BLE radar. Password baru harus 6 karakter.'
+                  : 'Hubungkan ke radar BLE untuk mengubah password.',
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+            ),
+            const SizedBox(height: 8),
             Row(
               children: [
                 Expanded(
                   child: TextField(
-                    controller: textController,
+                    controller: _blePwdController,
                     obscureText: true,
                     maxLength: 6,
-                    decoration: const InputDecoration(
+                    enabled: isConnected,
+                    decoration: InputDecoration(
                       hintText: 'Password Baru (6 char)',
                       counterText: '',
                       isDense: true,
-                      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                      border: OutlineInputBorder(),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      border: const OutlineInputBorder(),
+                      filled: !isConnected,
+                      fillColor: isConnected ? null : Colors.grey.withValues(alpha: 0.05),
                     ),
                   ),
                 ),
                 const SizedBox(width: 12),
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue,
+                    backgroundColor: isConnected ? Colors.blue : Colors.grey,
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                   ),
-                  onPressed: () async {
-                    final pwd = textController.text.trim();
-                    if (pwd.length != 6) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Password harus tepat 6 karakter!'),
-                          backgroundColor: Colors.redAccent,
-                        ),
-                      );
-                      return;
-                    }
-                    
-                    final confirm = await showDialog<bool>(
-                      context: context,
-                      builder: (ctx) => AlertDialog(
-                        title: const Text('Ubah Password BLE?'),
-                        content: Text('Apakah Anda yakin ingin mengubah password Bluetooth radar ke "$pwd"?\nRadar akan segera di-restart.'),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(ctx, false),
-                            child: const Text('Batal'),
-                          ),
-                          FilledButton(
-                            onPressed: () => Navigator.pop(ctx, true),
-                            child: const Text('Ubah & Restart'),
-                          ),
-                        ],
-                      ),
-                    );
+                  onPressed: isConnected
+                      ? () async {
+                          final pwd = _blePwdController.text.trim();
+                          if (pwd.length != 6) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Password harus tepat 6 karakter!'),
+                                backgroundColor: Colors.redAccent,
+                              ),
+                            );
+                            return;
+                          }
 
-                    if (confirm == true) {
-                      setState(() => _isLoading = true);
-                      final success = await _manager.changeBlePassword(pwd);
-                      setState(() => _isLoading = false);
-                      if (success) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Password berhasil diubah & Radar di-restart. Silakan hubungkan kembali.'),
-                            backgroundColor: Colors.green,
-                          ),
-                        );
-                        await _manager.bleService.disconnect();
-                        setState(() {});
-                      } else {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Gagal mengubah password Bluetooth'),
-                            backgroundColor: Colors.redAccent,
-                          ),
-                        );
-                      }
-                    }
-                  },
+                          final confirm = await showDialog<bool>(
+                            context: context,
+                            builder: (ctx) => AlertDialog(
+                              title: const Text('Ubah Password BLE?'),
+                              content: Text('Apakah Anda yakin ingin mengubah password Bluetooth radar ke "$pwd"?\nRadar akan segera di-restart.'),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(ctx, false),
+                                  child: const Text('Batal'),
+                                ),
+                                FilledButton(
+                                  onPressed: () => Navigator.pop(ctx, true),
+                                  child: const Text('Ubah & Restart'),
+                                ),
+                              ],
+                            ),
+                          );
+
+                          if (confirm == true) {
+                            setState(() => _isLoading = true);
+                            final success = await _manager.changeBlePassword(pwd);
+                            _blePwdController.clear();
+                            setState(() => _isLoading = false);
+                            if (success) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Password berhasil diubah & Radar di-restart.'),
+                                  backgroundColor: Colors.green,
+                                ),
+                              );
+                              await _manager.bleService.disconnect();
+                              setState(() {});
+                            } else {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Gagal mengubah password — radar tidak mengkonfirmasi'),
+                                  backgroundColor: Colors.redAccent,
+                                ),
+                              );
+                            }
+                          }
+                        }
+                      : null,
                   child: const Text('Simpan'),
                 ),
               ],

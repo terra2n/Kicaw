@@ -59,6 +59,9 @@ const int THRESHOLD_KOSONG = 20;
 // =========================================================================
 bool  lampuNyala       = false;
 bool  radarTerdeteksi  = false;
+bool  testMode         = false;
+bool  prevTestMode     = false;
+unsigned long lastLampToggle = 0;
 int   hitungLow        = 0;
 int   hitungHigh       = 0;
 unsigned long waktuMulaiMati = 0;
@@ -501,6 +504,26 @@ void loop() {
     cmdEngineeringLoop();
   }
 #endif
+
+  // ── TEST MODE: toggle lamp setiap 3 detik ──
+  if (testMode != prevTestMode) {
+    prevTestMode = testMode;
+    if (!testMode) {
+      hitungHigh = 0;
+      hitungLow = 0;
+    }
+  }
+  if (testMode) {
+    if (sekarang - lastLampToggle >= 3000) {
+      lastLampToggle = sekarang;
+      lampuNyala = !lampuNyala;
+      digitalWrite(PIN_RELAY, lampuNyala ? LOW : HIGH);
+      pushKeFirebase();
+    }
+    // Skip radar presence detection when in test mode
+    delay(50);
+    return;
+  }
 
   int rawRadar = digitalRead(PIN_RADAR);
 

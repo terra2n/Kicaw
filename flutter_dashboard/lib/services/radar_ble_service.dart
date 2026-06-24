@@ -18,6 +18,7 @@ class RadarBleService {
 
   final _rxBuffer = <int>[];
   bool _isAuthenticated = false;
+  bool _passwordChangeConfirmed = false;
   String _activePassword = 'HiLink';
   String _lastConnectedMac = '';
 
@@ -32,6 +33,8 @@ class RadarBleService {
   BluetoothDevice? get connectedDevice => _connectedDevice;
   bool get isAuthenticated => _isAuthenticated;
   String get lastConnectedMac => _lastConnectedMac;
+  String get activePassword => _activePassword;
+  bool get hasPasswordOverride => _activePassword != _fallbackPassword && _activePassword != 'HiLink';
   Stream<BluetoothConnectionState> get connectionStateStream => _connectionStateController.stream;
   Stream<RadarConfig> get configStream => _configController.stream;
   Stream<EngineeringData> get engineeringStream => _engineeringController.stream;
@@ -121,7 +124,9 @@ class RadarBleService {
 
       // Load active password (preferences first, then dotenv fallback)
       final prefs = await SharedPreferences.getInstance();
-      _activePassword = prefs.getString('radar_ble_password_override') ?? _fallbackPassword;
+      final hasOverride = prefs.containsKey('radar_ble_password_override');
+      _activePassword = hasOverride ? prefs.getString('radar_ble_password_override')! : _fallbackPassword;
+      debugPrint("[BLE] Password: $_activePassword (source: ${hasOverride ? 'prefs override' : 'dotenv'})");
 
       await device.connect(autoConnect: false, license: License.nonprofit)
           .timeout(const Duration(seconds: 10));
@@ -240,17 +245,40 @@ class RadarBleService {
       0xFD, 0xFC, 0xFB, 0xFA, 0x02, 0x00, 0xFE, 0x00, 0x04, 0x03, 0x02, 0x01 // OFF
     ];
 
+    _passwordChangeConfirmed = false;
     await _writeBytes(packet);
-    
-    // Save to SharedPreferences so the app uses this password next time!
+
+    // Tunggu konfirmasi dari radar (cmdType 0xA9) selama max 3 detik
+    for (int i = 0; i < 30; i++) {
+      await Future.delayed(const Duration(milliseconds: 100));
+      if (_passwordChangeConfirmed) break;
+    }
+
+    if (!_passwordChangeConfirmed) {
+      debugPrint("[BLE] Password change not confirmed by radar");
+      _commandStatusController.add("error: Radar tidak mengkonfirmasi perubahan password");
+      return false;
+    }
+
+    // Hanya simpan ke SharedPreferences setelah dikonfirmasi radar
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('radar_ble_password_override', newPassword);
+    _activePassword = newPassword;
     
     _commandStatusController.add("done");
+    debugPrint("[BLE] Password changed to: $newPassword (saved to prefs)");
     
     // Restart radar so it takes effect
     await sendCommand('restart_radar');
     return true;
+  }
+
+  /// Reset password override — pakai password dari .env lagi
+  Future<void> resetPassword() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('radar_ble_password_override');
+    _activePassword = _fallbackPassword;
+    debugPrint("[BLE] Password override cleared, using dotenv: $_activePassword");
   }
 
   /// Send password verification frame
@@ -271,13 +299,18 @@ class RadarBleService {
     ];
 
     _commandStatusController.add("processing");
+    debugPrint("[BLE] Auth packet: ${packet.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')}");
     await _writeBytes(packet);
 
     // Wait for auth confirmation in notifications
-    for (int i = 0; i < 20; i++) {
+    for (int i = 0; i < 50; i++) {
       await Future.delayed(const Duration(milliseconds: 100));
-      if (_isAuthenticated) return true;
+      if (_isAuthenticated) {
+        debugPrint("[BLE] Authenticated after ${(i + 1) * 100}ms");
+        return true;
+      }
     }
+    debugPrint("[BLE] Auth timeout after 5000ms, password used: $_activePassword");
     return false;
   }
 
@@ -462,12 +495,15 @@ class RadarBleService {
     // Auth acknowledgement
     if (cmdType == 0xA8) {
       int status = frame[8];
-      if (status == 0x00) {
-        _isAuthenticated = true;
-      } else {
-        _isAuthenticated = false;
-      }
-    } 
+      _isAuthenticated = (status == 0x00);
+      debugPrint("[BLE] Auth response: status=0x${status.toRadixString(16).padLeft(2, '0')} ${_isAuthenticated ? 'OK' : 'FAIL'}");
+    }
+    // Password change confirmation (0xA9)
+    else if (cmdType == 0xA9) {
+      int status = frame[8];
+      _passwordChangeConfirmed = (status == 0x00);
+      debugPrint("[BLE] Password change response: status=0x${status.toRadixString(16).padLeft(2, '0')} ${_passwordChangeConfirmed ? 'OK' : 'FAIL'}");
+    }
     // Read config response (0x61)
     else if (cmdType == 0x61) {
       try {
