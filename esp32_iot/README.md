@@ -1,15 +1,15 @@
 # ESP32 Smart Room IoT Firmware
 
-Firmware ESP32 untuk monitoring ruangan pintar dengan sensor radar HLK-LD2410C, kontrol relay otomatis, dan integrasi Firebase Realtime Database.
+Firmware ESP32-C3 untuk otomatisasi lampu ruangan dengan sensor radar HLK-LD2410C (digital OUT GPIO14), kontrol relay active LOW, dan dual-write ke Firebase Realtime Database + Supabase PostgreSQL.
 
 ## 🔧 Hardware Requirements
 
 ### Components
-- **ESP32 DevKit** (NodeMCU-32S atau compatible)
-- **HLK-LD2410C Radar Sensor** (24GHz mmWave presence detection)
-- **Relay Module** (1-channel, 5V trigger)
+- **ESP32-C3 Dev Board** (XIAO ESP32C3 atau compatible)
+- **HLK-LD2410C Radar Sensor** (24GHz mmWave presence detection, digital OUT + UART)
+- **Relay Module** (1-channel, 5V trigger, Active LOW)
 - **Power Supply** (5V/2A minimum)
-- **LED/Lamp** (controlled via relay)
+- **LED/Lamp** (3W, controlled via relay)
 
 ### Pin Configuration
 
@@ -69,6 +69,7 @@ ESP32                    Relay Module
 
 **Required Libraries** (via Library Manager / Arduino CLI environment):
 - **FirebaseClient** by Mobizt (v1.3.0+)
+- **ArduinoJson** by Benoit Blanchon (v6.20.0+ / v7.0.0+)
 - **WiFi** (built-in)
 - **WiFiClientSecure** (built-in)
 
@@ -82,13 +83,25 @@ ESP32                    Relay Module
 
 **A. Setup Secrets File**
 
-1. **Copy file template:**
-   ```bash
-   cd esp32_iot
-   cp secrets.example.h secrets.h
-   ```
+1. **Buat file `secrets.h`** dengan text editor (Arduino IDE, VS Code, Notepad++, dll)
 
-2. **Edit `secrets.h`** dengan text editor (Arduino IDE, VS Code, Notepad++, dll)
+2. **Isi credentials** untuk WiFi, Firebase, dan Supabase:
+
+```cpp
+// WiFi
+#define WIFI_SSID "Rumah_WiFi_5G"
+#define WIFI_PASSWORD "password12345"
+
+// Firebase (jika masih pakai)
+#define API_KEY "AIzaSyXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+#define DATABASE_URL "https://your-project-id-default-rtdb.firebaseio.com"
+
+// Supabase
+#define SUPABASE_URL "https://xxxxx.supabase.co"
+#define SUPABASE_ANON_KEY "eyJhbGc..."
+```
+
+> **Catatan:** Semua credentials sekarang dalam satu file `secrets.h` (WiFi + Firebase + Supabase)
 
 **B. WiFi Credentials**
 
@@ -138,7 +151,7 @@ Edit `secrets.h`, cari bagian Firebase:
 **D. Verify Configuration**
 
 Sebelum upload, pastikan:
-- ✅ File `secrets.h` sudah dibuat (copy dari `secrets.example.h`)
+- ✅ File `secrets.h` sudah dibuat dengan semua credentials (WiFi + Firebase + Supabase)
 - ✅ WiFi SSID dan password sudah diisi
 - ✅ Firebase API Key sudah diisi (bukan yang default)
 - ✅ Database URL sesuai dengan project Firebase Anda
@@ -210,41 +223,39 @@ flutter run
 
 ## 📊 Firebase Database Structure
 
-The firmware writes to the following paths:
+Firmware menulis ke path `ruangan_01/`:
 
 ```json
 {
-  "sensors": {
-    "eco2": 400.5,           // Calculated CO2 (ppm)
-    "temperature": 28.3,     // Room temperature (°C)
-    "humidity": 65.2,        // Relative humidity (%)
-    "timestamp": 1234567890, // Unix timestamp
-    "occupied": true         // Radar presence status
-  },
-  "energy": {
-    "total_wh": 125.4,       // Cumulative energy (Wh)
-    "total_co2_mg": 106.59,  // Cumulative CO2 (mg)
-    "lamp_on": true          // Current lamp state
-  },
-  "radar": {
-    "gate_moving": 50,       // Moving sensitivity (0-100)
-    "gate_stationary": 50    // Stationary sensitivity (0-100)
+  "ruangan_01": {
+    "status_lampu": true,            // true = nyala, false = mati
+    "status_radar": true,            // true = ada orang, false = kosong
+    "radar_distance_cm": 37,         // Perkiraan jarak (gate × 75 + 37)
+    "energi_dihemat_wh": 1.9,        // Kumulatif energi dihemat (Wh)
+    "co2_dicegah_mg": 1615.0,        // Kumulatif CO2 dicegah (mg)
+    "waktu_mulai_mati": 1719234567,  // Epoch timestamp saat lampu mati (0 = lampu nyala)
+    "last_heartbeat": 1719234567,    // Epoch timestamp heartbeat
+    "last_heartbeat_ts": "2024-06-24 14:30:00"  // Timestamp WIB
   }
 }
 ```
+
+Data dibaca oleh Flutter via `.onValue` — setiap perubahan langsung terlihat di dashboard.
 
 ## ⚙️ Configuration Parameters
 
 ### Radar Settings
 
 ```cpp
-const byte BATAS_GERBANG_JARAK = 0;  // Gate 0 = < 75 cm detection range
-const int THRESHOLD_MASUK  = 10;      // Trigger ON after 0.5s (10 × 50ms)
-const int THRESHOLD_KOSONG = 20;      // Trigger OFF after 1.0s (20 × 50ms)
+const byte BATAS_GERBANG_DEFAULT = 0;  // Gate 0 = < 75 cm detection range
+const int THRESHOLD_MASUK  = 1;        // Trigger ON after 1 detection (~50ms)
+const int THRESHOLD_KOSONG = 1;        // Trigger OFF after 1 detection (~50ms)
 ```
 
+Threshold = 1 berarti **satu deteksi langsung eksekusi relay**. HLK-LD2410C sudah melakukan filtering internal, sehingga tidak perlu debounce tambahan.
+
 **Adjust Detection Range:**
-- `Gate 0` = 0-75 cm
+- `Gate 0` = 0-75 cm (default, untuk area meja ~45cm)
 - `Gate 1` = 75-150 cm
 - `Gate 2` = 150-225 cm
 - ... (up to Gate 8 = 525-600 cm)
@@ -270,11 +281,11 @@ Radar HIGH (person detected)
     ↓
 hitungHigh++ (increment counter)
     ↓
-hitungHigh >= THRESHOLD_MASUK (10)?
-    ↓ YES
-Turn ON relay → Lamp ON
+hitungHigh >= THRESHOLD_MASUK (1)?
+    ↓ YES (instan, ~50ms)
+Turn ON relay (digitalWrite LOW) → Lamp ON
     ↓
-Update Firebase: occupied = true
+Log activity ke Supabase (lamp_on)
 ```
 
 ```
@@ -282,36 +293,42 @@ Radar LOW (no person)
     ↓
 hitungLow++ (increment counter)
     ↓
-hitungLow >= THRESHOLD_KOSONG (20)?
-    ↓ YES
-Turn OFF relay → Lamp OFF
+hitungLow >= THRESHOLD_KOSONG (1)?
+    ↓ YES (instan, ~50ms)
+Turn OFF relay (digitalWrite HIGH) → Lamp OFF
     ↓
-Update Firebase: occupied = false
-Calculate energy & CO2 emission
+Hitung energi & CO2 selama periode mati
+Simpan ke NVS
+    ↓
+Log activity ke Supabase (lamp_off)
 ```
 
-### 2. Firebase Live Config
+**PENTING:** Tidak ada `pushKeFirebase()` di blok ON/OFF. Cloud push hanya terjadi di siklus monitoring 5 detik, sehingga latensi jaringan tidak mempengaruhi responsivitas relay.
 
-The firmware listens to `/radar/gate_moving` and `/radar/gate_stationary` for real-time sensitivity adjustments from the Flutter dashboard.
+### 2. Firebase Commands (Legacy)
 
-**Example:**
-```json
-{
-  "radar": {
-    "gate_moving": 75,       // Set moving sensitivity to 75%
-    "gate_stationary": 60    // Set stationary sensitivity to 60%
-  }
-}
-```
+Fungsi command Firebase (`set_lampu`, `test_mode`) sudah **dinonaktifkan** — kontrol lampu 100% otomatis berdasarkan radar, tanpa override manual dari aplikasi.
 
-The ESP32 will automatically apply these values to the HLK-LD2410C via UART.
+**Radar UART:** Parameter konfigurasi radar (gate sensitivity, max distance, engineering mode) tersedia di `firebase_cmd.h` untuk keperluan engineering/debug, tapi tidak digunakan dalam operasi normal. Untuk mengatur parameter radar, gunakan **HLKRadarTool** app dari Play Store (radar dilepas dari ESP32).
 
 ### 3. Energy Calculation
 
+Energi dihitung saat lampu berubah dari OFF → ON (durasi periode mati):
+
 ```cpp
-energyDelta_Wh = (DAYA_LAMPU_WATT × duration_ms) / 3600000
-co2Delta_mg = energyDelta_Wh × FAKTOR_EMISI_GRID
+energi_Wh  = DAYA_LAMPU_WATT × durasi_jam        // durasi_jam = durasi_ms / 3600000
+co2_mg     = (energi_Wh / 1000.0) × FAKTOR_EMISI_GRID × 1000000
 ```
+
+Nilai tersimpan di NVS (flash ESP32) dan dipulihkan setelah reboot. Total energi real-time (termasuk sesi mati berjalan) dihitung ulang setiap 5 detik untuk push ke cloud.
+
+### 4. Key Design Decisions
+
+* **Threshold = 1 (instant detection):** HLK-LD2410C sudah melakukan filtering internal, sehingga satu deteksi langsung memicu relay. Tidak ada debounce tambahan — respons ~50ms.
+* **Cloud push di siklus 5 detik (bukan di jalur deteksi):** `pushKeFirebase()` dan `pushKeSupabase()` hanya dipanggil dalam blok monitoring periodik, bukan di blok ON/OFF. Ini memastikan relay tidak terblokir oleh latensi jaringan.
+* **Non-blocking WiFi & Supabase reconnection:** WiFi state machine + Supabase retry 30 detik — radar tetap responsif meskipun koneksi cloud bermasalah.
+* **NVS persistensi:** Energi total dan gate radar disimpan di NVS flash setiap 60 detik, dipulihkan setelah reboot.
+* **Radar Config via HLKRadarTool:** Konfigurasi parameter radar (gate, sensitivity) dilakukan melalui aplikasi **HLKRadarTool** dari Play Store, bukan dari firmware.
 
 ## 🛠️ Troubleshooting
 
@@ -330,16 +347,27 @@ Serial.println(WiFi.localIP());  // Should print valid IP
 ### Issue: Firebase Not Syncing
 
 **Check:**
-- `API_KEY` and `DATABASE_URL` are correct
-- Firebase Realtime Database rules allow writes:
+- `API_KEY`, `DATABASE_URL`, `FIREBASE_AUTH_EMAIL`, `FIREBASE_AUTH_PASSWORD` are correct
+- Firebase Realtime Database rules allow writes with auth:
   ```json
   {
     "rules": {
-      ".read": true,
-      ".write": true
+      "ruangan_01": {
+        ".read": true,
+        ".write": "auth.uid != null"
+      }
     }
   }
   ```
+- ESP32 menggunakan **email/password auth** — pastikan user `esp32@smartroom.local` sudah dibuat di Firebase Authentication
+
+### Issue: Supabase Not Syncing
+
+**Check:**
+- `SUPABASE_URL` dan `SUPABASE_ANON_KEY` benar
+- Supabase RLS policy mengizinkan anon insert/update pada semua 4 tabel
+- Serial monitor menunjukkan `[SUPABASE] Connection successful!`
+- Firmware menggunakan non-blocking retry setiap 30 detik jika gagal
 
 ### Issue: Radar Not Detecting
 
@@ -371,20 +399,26 @@ digitalWrite(PIN_RELAY, HIGH);  // Should turn OFF
 
 ```
 esp32_iot/
-├── esp32_iot.ino         # Main firmware
-├── firebase_cmd.h        # Firebase command handlers (radar config)
+├── esp32_iot.ino         # Main firmware (manages loops, dual-write to Firebase & Supabase)
+├── firebase_cmd.h        # Firebase command handlers & config parser (via ArduinoJson)
+├── supabase_client.h     # Supabase client helper (updates room status, logs, & activity)
 ├── ld2410_uart.h         # HLK-LD2410C UART protocol library
+├── secrets.h             # WiFi & Cloud databases credentials (git-ignored)
 └── README.md             # This file
 ```
 
 ## 🔐 Security Notes
 
-**⚠️ WARNING:** The current code exposes Firebase credentials in plaintext.
+**⚠️ WARNING:** Credentials disimpan dalam plaintext di `secrets.h` (sudah git-ignored).
 
-**For Production:**
-1. Use **Environment Variables** or **Secrets Manager**
-2. Set **Firebase Security Rules** to restrict unauthorized access
-3. Enable **Firebase App Check** for additional protection
+**Yang sudah dilakukan:**
+1. Firebase RTDB `.write` dibatasi dengan auth (`auth.uid != null`)
+2. ESP32 menggunakan email/password auth khusus (bukan anonymous)
+3. File `secrets.h` di-gitignore — tidak tercommit ke repositori
+
+**Untuk produksi (jika diperlukan):**
+1. Gunakan **Environment Variables** atau **Secrets Manager** untuk ESP32
+2. Enable **Firebase App Check** untuk proteksi tambahan
 
 ## 📚 References
 

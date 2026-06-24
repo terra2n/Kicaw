@@ -2,7 +2,7 @@
   "rules": {
     "ruangan_01": {
       ".read": true,
-      ".write": true,
+      ".write": "auth.uid != null",
       ".indexOn": ["timestamp"]
     }
   }

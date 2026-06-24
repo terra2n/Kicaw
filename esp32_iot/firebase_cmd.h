@@ -15,6 +15,7 @@
 #define FB_CMD_PARAMS    FB_RADAR_CFG "/command_params"
 #define FB_CMD_CONFIG    FB_RADAR_CFG "/config_data"
 #define FB_CMD_ENG_DATA  FB_RADAR_CFG "/engineering_data"
+#define FB_CMD_TS        FB_RADAR_CFG "/command_ts"
 
 // =========================================================================
 // EXTERNAL VARIABLES (defined in main ino)
@@ -22,15 +23,19 @@
 extern FirebaseApp app;
 extern AsyncClientClass async_client;
 extern RealtimeDatabase Database;
+extern String getTimestamp();
+extern byte radarMaxGate;
+extern Preferences prefs;
 
 // =========================================================================
 // STATE VARIABLES
 // =========================================================================
 static bool cmdProcessing = false;
+static unsigned long cmdStartMs = 0;
 static bool engineeringMode = false;
 static unsigned long lastEngPush = 0;
 static String lastCommand = "";
-static unsigned long lastCmdCheck = 0;
+static int64_t lastCmdTs = 0;  // [Fix #1] int64_t agar tidak overflow epoch seconds
 
 // =========================================================================
 // FORWARD DECLARATIONS
@@ -63,14 +68,13 @@ void cmdPushConfigResult(RadarConfig *cfg) {
   Database.set<uint8_t>(async_client, String(FB_CMD_CONFIG) + "/max_stationary_gate", cfg->max_stationary_gate);
   Database.set<uint16_t>(async_client, String(FB_CMD_CONFIG) + "/inactivity_timeout", cfg->inactivity_timeout);
 
-  for (int g = 0; g <= cfg->max_moving_gate && g < 9; g++) {
+  for (int g = 0; g < 9; g++) {
     String gPath = String(FB_CMD_CONFIG) + "/gates/g" + g;
     Database.set<uint8_t>(async_client, gPath + "/moving", cfg->moving_sens[g]);
     Database.set<uint8_t>(async_client, gPath + "/stationary", cfg->stationary_sens[g]);
   }
 
-  // FIXED: Ditambahkan String() membungkus FB_CMD_CONFIG
-  Database.set<String>(async_client, String(FB_CMD_CONFIG) + "/last_updated", String(millis()));
+  Database.set<String>(async_client, String(FB_CMD_CONFIG) + "/last_updated", getTimestamp());
 }
 
 // =========================================================================
@@ -79,17 +83,26 @@ void cmdPushConfigResult(RadarConfig *cfg) {
 void cmdPushEngData(EngData *eng) {
   if (!app.ready() || !eng || !eng->valid) return;
 
-  Database.set<uint16_t>(async_client, String(FB_CMD_ENG_DATA) + "/presence_distance_cm", eng->presence_distance_cm);
-  Database.set<uint16_t>(async_client, String(FB_CMD_ENG_DATA) + "/moving_distance_cm", eng->moving_distance_cm);
-  Database.set<uint16_t>(async_client, String(FB_CMD_ENG_DATA) + "/stationary_distance_cm", eng->stationary_distance_cm);
+  JsonDocument doc;
+  doc["presence_distance_cm"] = eng->presence_distance_cm;
+  doc["moving_distance_cm"] = eng->moving_distance_cm;
+  doc["stationary_distance_cm"] = eng->stationary_distance_cm;
 
-  for (int g = 0; g <= eng->moving_max_gate && g < 9; g++) {
-    String ePath = String(FB_CMD_ENG_DATA) + "/energy/g" + g;
-    Database.set<uint8_t>(async_client, ePath + "/moving", eng->moving_energy[g]);
-    Database.set<uint8_t>(async_client, ePath + "/stationary", eng->stationary_energy[g]);
+  JsonObject energy = doc["energy"].to<JsonObject>();
+  for (int g = 0; g < 9; g++) {
+    String gKey = "g" + String(g);
+    JsonObject gate = energy[gKey].to<JsonObject>();
+    gate["moving"] = eng->moving_energy[g];
+    gate["stationary"] = eng->stationary_energy[g];
   }
 
-  Database.set<uint32_t>(async_client, String(FB_CMD_ENG_DATA) + "/timestamp", millis());
+  doc["timestamp"] = getTimestamp();
+
+  String payload;
+  serializeJson(doc, payload);
+
+  // Push the entire JSON object in one single request to avoid socket exhaustion
+  Database.set<object_t>(async_client, FB_CMD_ENG_DATA, object_t(payload));
 }
 
 // =========================================================================
@@ -103,28 +116,17 @@ void cmdPushFirmware(uint8_t major, uint8_t minor, uint32_t bugfix) {
 }
 
 // =========================================================================
-// PARSE PARAMETER JSON SEDERHANA
+// PARSE PARAMETER JSON AMAN MENGGUNAKAN ARDUINOJSON
 // =========================================================================
 int cmdParseIntParam(const String &json, const String &key, int defaultVal) {
-  int idx = json.indexOf(key);
-  if (idx == -1) return defaultVal;
+  JsonDocument doc;
+  DeserializationError error = deserializeJson(doc, json);
+  if (error) return defaultVal;
 
-  idx = json.indexOf(':', idx);
-  if (idx == -1) return defaultVal;
-
-  idx++; // skip ':'
-  while (idx < (int)json.length() && (json[idx] == ' ' || json[idx] == '\t')) idx++;
-
-  bool neg = false;
-  if (json[idx] == '-') { neg = true; idx++; }
-
-  int val = 0;
-  while (idx < (int)json.length() && json[idx] >= '0' && json[idx] <= '9') {
-    val = val * 10 + (json[idx] - '0');
-    idx++;
+  if (doc.containsKey(key)) {
+    return doc[key].as<int>();
   }
-
-  return neg ? -val : val;
+  return defaultVal;
 }
 
 // =========================================================================
@@ -133,7 +135,7 @@ int cmdParseIntParam(const String &json, const String &key, int defaultVal) {
 void cmdProcess(const String &command, const String &params) {
   if (command == "" || command == "none") return;
 
-  cmdProcessing = true;
+  // [Fix #2] cmdProcessing dan cmdStartMs diset dari cmdCheckFirebase(), tidak perlu diset ulang
   lastCommand = command;
   cmdUpdateStatus("processing");
 
@@ -164,17 +166,81 @@ void cmdProcess(const String &command, const String &params) {
   else if (command == "set_max_gate") {
     int mGate = cmdParseIntParam(params, "moving_gate", 3);
     int sGate = cmdParseIntParam(params, "stationary_gate", 2);
-    int timeout = cmdParseIntParam(params, "timeout", 5);
+    int timeout = cmdParseIntParam(params, "timeout", 1);
     if (radarSetMaxGate((uint8_t)mGate, (uint8_t)sGate, (uint16_t)timeout)) {
       delay(300);
+      radarMaxGate = (byte)mGate;
+      prefs.putInt("radar_gate", mGate);
       if (radarBacaKonfigurasi(&cfg)) cmdPushConfigResult(&cfg);
       cmdUpdateStatus("done");
     } else {
       cmdUpdateStatus("error", "Set max gate failed");
     }
   }
+  else if (command == "set_gate_sens") {
+    int gate = cmdParseIntParam(params, "gate", 0);
+    int mSens = cmdParseIntParam(params, "moving", 50);
+    int sSens = cmdParseIntParam(params, "stationary", 50);
+    if (radarSetGateSensitivitas((uint8_t)gate, (uint8_t)mSens, (uint8_t)sSens)) {
+      delay(300);
+      if (radarBacaKonfigurasi(&cfg)) cmdPushConfigResult(&cfg);
+      cmdUpdateStatus("done");
+    } else {
+      cmdUpdateStatus("error", "Set gate sensitivity failed");
+    }
+  }
+  else if (command == "set_all_gates_sens") {
+    uint8_t mSens[9], sSens[9];
+    for (int g = 0; g < 9; g++) {
+      String mKey = "m" + String(g);
+      String sKey = "s" + String(g);
+      mSens[g] = (uint8_t)cmdParseIntParam(params, mKey, 50);
+      sSens[g] = (uint8_t)cmdParseIntParam(params, sKey, 50);
+    }
+    if (radarSetSemuaGateSensitivitas(mSens, sSens)) {
+      delay(300);
+      if (radarBacaKonfigurasi(&cfg)) cmdPushConfigResult(&cfg);
+      cmdUpdateStatus("done");
+    } else {
+      cmdUpdateStatus("error", "Set all gates sensitivity failed");
+    }
+  }
+  else if (command == "factory_reset") {
+    if (radarFactoryReset()) {
+      cmdUpdateStatus("done");
+    } else {
+      cmdUpdateStatus("error", "Factory reset failed");
+    }
+  }
+  else if (command == "restart_radar") {
+    if (radarRestart()) {
+      cmdUpdateStatus("done");
+    } else {
+      cmdUpdateStatus("error", "Restart failed");
+    }
+  }
+  else if (command == "engineering_on") {
+    if (radarSetEngineeringMode(true)) {
+      engineeringMode = true;
+      cmdUpdateStatus("done");
+    } else {
+      cmdUpdateStatus("error", "Engineering mode ON failed");
+    }
+  }
+  else if (command == "engineering_off") {
+    if (radarSetEngineeringMode(false)) {
+      engineeringMode = false;
+      cmdUpdateStatus("done");
+    } else {
+      cmdUpdateStatus("error", "Engineering mode OFF failed");
+    }
+  }
   else {
     cmdUpdateStatus("error", String("Unknown command: ") + command);
+  }
+
+  if (app.ready()) {
+    Database.set<String>(async_client, FB_CMD_PATH, "none");
   }
 
   cmdProcessing = false;
@@ -210,28 +276,53 @@ void cmdEngineeringLoop() {
 // Panggil dari loop() setiap 500ms
 // =========================================================================
 void cmdCheckFirebase() {
-  if (!app.ready() || cmdProcessing) return;
+  if (!app.ready()) return;
+
+  if (cmdProcessing) {
+    if (millis() - cmdStartMs > 15000) {
+      Serial.println("[CMD] Timeout processing command! Forcing reset.");
+      cmdProcessing = false;
+      cmdUpdateStatus("error", "Command timeout");
+    } else {
+      return;
+    }
+  }
 
   static unsigned long lastPoll = 0;
   unsigned long now = millis();
   if (now - lastPoll < 500) return;
   lastPoll = now;
 
+  int64_t cmdTs = Database.get<int64_t>(async_client, FB_CMD_TS);
+
+  if (cmdTs == lastCmdTs) return;
+
   String cmd = Database.get<String>(async_client, FB_CMD_PATH);
   cmd.trim();
 
-  if (cmd.length() == 0 || cmd == "none") return;
-  if (cmd == lastCommand) return;
+  if (cmd.length() == 0 || cmd == "none") {
+    lastCmdTs = cmdTs;
+    return;
+  }
 
-  lastCommand = cmd;
-  cmdProcessing = true;
+  lastCmdTs = cmdTs;
+  cmdProcessing = true;   // [Fix #2] Set di sini (bukan di dalam cmdProcess)
+  cmdStartMs = millis();  // [Fix #2] Baseline timeout dimulai di sini
   cmdUpdateStatus("processing");
   Serial.print("[CMD] Received: ");
   Serial.println(cmd);
 
+#ifndef USE_RADAR_UART
+  cmdUpdateStatus("error", "Radar UART is disabled in ESP32 firmware");
+  if (app.ready()) {
+    Database.set<String>(async_client, FB_CMD_PATH, "none");
+  }
+  cmdProcessing = false;
+#else
   String params = Database.get<String>(async_client, FB_CMD_PARAMS);
   if (params.length() == 0) params = "{}";
   cmdProcess(cmd, params);
+#endif
 }
 
 #endif // FIREBASE_CMD_H

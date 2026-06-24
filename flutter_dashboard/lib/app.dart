@@ -3,16 +3,14 @@ import 'pages/home/home_page.dart';
 import 'pages/statistics/statistics_page.dart';
 import 'pages/carbon/carbon_page.dart';
 import 'pages/settings/settings_page.dart';
-import 'pages/radar/radar_page.dart';
+import 'pages/settings/radar_config_page.dart';
 import 'services/settings_service.dart';
-import 'services/notification_service.dart';
 import 'theme/app_theme.dart';
 
 class App extends StatefulWidget {
   final SettingsService settingsService;
-  final NotificationService notificationService;
 
-  const App({super.key, required this.settingsService, required this.notificationService});
+  const App({super.key, required this.settingsService});
 
   @override
   State<App> createState() => _AppState();
@@ -42,7 +40,6 @@ class _AppState extends State<App> {
       const CarbonPage(),
       SettingsPage(
         service: widget.settingsService,
-        notifService: widget.notificationService,
         onToggleTheme: _toggleTheme,
         isDark: _themeMode == ThemeMode.dark,
       ),
@@ -55,7 +52,7 @@ class _AppState extends State<App> {
       themeMode: _themeMode,
       debugShowCheckedModeBanner: false,
       routes: {
-        '/radar': (context) => const RadarPage(),
+        '/radar-config': (context) => const RadarConfigPage(),
       },
       home: Scaffold(
         body: IndexedStack(

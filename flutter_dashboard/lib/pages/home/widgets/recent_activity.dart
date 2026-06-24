@@ -64,7 +64,7 @@ class RecentActivity extends StatelessWidget {
                       ),
                     ),
                     Text(
-                      '${item.timestamp.hour.toString().padLeft(2, '0')}:${item.timestamp.minute.toString().padLeft(2, '0')}',
+                      _formatWIB(item.timestamp),
                       style: TextStyle(fontSize: 9, color: context.textTertiary),
                     ),
                   ],
@@ -76,4 +76,9 @@ class RecentActivity extends StatelessWidget {
       ),
     );
   }
+}
+
+String _formatWIB(DateTime utc) {
+  final wib = utc.add(const Duration(hours: 7));
+  return '${wib.hour.toString().padLeft(2, '0')}:${wib.minute.toString().padLeft(2, '0')}';
 }

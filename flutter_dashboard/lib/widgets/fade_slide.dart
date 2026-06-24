@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 
 class FadeSlide extends StatefulWidget {
@@ -15,6 +16,7 @@ class _FadeSlideState extends State<FadeSlide>
   late AnimationController _ctrl;
   late Animation<double> _fade;
   late Animation<Offset> _slide;
+  Timer? _delayTimer;
 
   @override
   void initState() {
@@ -29,11 +31,16 @@ class _FadeSlideState extends State<FadeSlide>
       end: Offset.zero,
     ).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic));
 
-    Future.delayed(Duration(milliseconds: 80 * widget.index), _ctrl.forward);
+    _delayTimer = Timer(Duration(milliseconds: 80 * widget.index), () {
+      if (mounted) {
+        _ctrl.forward();
+      }
+    });
   }
 
   @override
   void dispose() {
+    _delayTimer?.cancel();
     _ctrl.dispose();
     super.dispose();
   }

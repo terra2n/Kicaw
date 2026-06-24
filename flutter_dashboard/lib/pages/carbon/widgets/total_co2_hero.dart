@@ -2,13 +2,13 @@ import 'package:flutter/material.dart';
 import '../../../theme/context_ext.dart';
 
 class TotalCo2Hero extends StatelessWidget {
-  final double co2Mg;
+  final double co2Grams;
 
-  const TotalCo2Hero({super.key, required this.co2Mg});
+  const TotalCo2Hero({super.key, required this.co2Grams});
 
   @override
   Widget build(BuildContext context) {
-    final g = co2Mg / 1000;
+    final g = co2Grams;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(28),

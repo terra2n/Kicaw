@@ -1,9 +1,23 @@
 import 'package:flutter/material.dart';
 import '../../../theme/context_ext.dart';
 import '../../../widgets/status_chip.dart';
+import '../../../services/firebase_health_service.dart';
 
-class FirebaseSection extends StatelessWidget {
+class FirebaseSection extends StatefulWidget {
   const FirebaseSection({super.key});
+
+  @override
+  State<FirebaseSection> createState() => _FirebaseSectionState();
+}
+
+class _FirebaseSectionState extends State<FirebaseSection> {
+  final FirebaseHealthService _health = FirebaseHealthService();
+
+  @override
+  void dispose() {
+    _health.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -26,7 +40,17 @@ class FirebaseSection extends StatelessWidget {
               ],
             ),
           ),
-          const StatusChip(active: true, activeLabel: 'Connected', inactiveLabel: 'Disconnected'),
+          StreamBuilder<bool>(
+            stream: _health.onlineStream,
+            builder: (context, snapshot) {
+              final isOnline = snapshot.data ?? false;
+              return StatusChip(
+                active: isOnline,
+                activeLabel: 'Connected',
+                inactiveLabel: 'Disconnected',
+              );
+            },
+          ),
         ],
       ),
     );

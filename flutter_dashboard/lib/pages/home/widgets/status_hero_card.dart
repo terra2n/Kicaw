@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../theme/context_ext.dart';
-import '../../../models/room_status.dart';
+import '../../../models/supabase/room_status.dart';
 import '../../../widgets/status_chip.dart';
 
 class StatusHeroCard extends StatelessWidget {
@@ -11,11 +11,20 @@ class StatusHeroCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final occupied = status.isOccupied;
+    final online = _isOnline();
+    final occupied = status.motionDetected;
+
+    // Offline state
+    if (!online) {
+      return _buildOfflineCard(context);
+    }
+
     final bgColor = occupied ? context.statusOccupied : context.statusEmpty;
     final iconColor = occupied ? Colors.amber : context.textTertiary;
     final statusText = occupied ? 'Occupied' : 'Empty';
-    final subText = occupied ? 'Radar detecting presence' : 'No motion detected';
+    final subText = occupied
+        ? 'Radar detecting presence'  // Bug #9 fix: Hapus tampilan co2Ppm sebagai jarak (salah konteks)
+        : 'No motion detected';
     final icon = occupied ? Icons.people_outline : Icons.night_shelter_outlined;
 
     return Container(
@@ -46,7 +55,7 @@ class StatusHeroCard extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              StatusChip(active: status.lampOn, activeLabel: 'Light ON', inactiveLabel: 'Light OFF'),
+              StatusChip(active: status.lampStatus, activeLabel: 'Light ON', inactiveLabel: 'Light OFF'),
               if (lastChange != null) ...[
                 const SizedBox(width: 12),
                 Text(
@@ -59,5 +68,53 @@ class StatusHeroCard extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  bool _isOnline() {
+    final diff = DateTime.now().difference(status.updatedAt);
+    return diff.inSeconds < 15; // Consider online if updated within 15 seconds
+  }
+
+  Widget _buildOfflineCard(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 20),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade300, width: 0.5),
+      ),
+      child: Column(
+        children: [
+          Icon(Icons.cloud_off, size: 48, color: Colors.grey.shade400),
+          const SizedBox(height: 12),
+          Text(
+            'Device Offline',
+            style: TextStyle(
+              fontSize: 20, fontWeight: FontWeight.w600,
+              color: Colors.grey.shade600,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'ESP32 not responding — check power/WiFi',
+            style: TextStyle(fontSize: 13, color: Colors.grey.shade500),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Last seen: ${_formatTimeAgo(status.updatedAt)}',
+            style: TextStyle(fontSize: 11, color: Colors.grey.shade400),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatTimeAgo(DateTime time) {
+    final diff = DateTime.now().difference(time);
+    if (diff.inSeconds < 60) return '${diff.inSeconds}s ago';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    return '${diff.inDays}d ago';
   }
 }
