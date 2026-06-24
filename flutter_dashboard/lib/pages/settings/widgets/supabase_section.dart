@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../theme/context_ext.dart';
 import '../../../widgets/status_chip.dart';
+import '../../../services/supabase_health_service.dart';
 
 class SupabaseSection extends StatefulWidget {
   const SupabaseSection({super.key});
@@ -11,21 +11,12 @@ class SupabaseSection extends StatefulWidget {
 }
 
 class _SupabaseSectionState extends State<SupabaseSection> {
-  bool _isOnline = false;
+  final SupabaseHealthService _health = SupabaseHealthService();
 
   @override
-  void initState() {
-    super.initState();
-    _check();
-  }
-
-  void _check() {
-    try {
-      Supabase.instance.client;
-      _isOnline = true;
-    } catch (_) {
-      _isOnline = false;
-    }
+  void dispose() {
+    _health.dispose();
+    super.dispose();
   }
 
   @override
@@ -49,10 +40,16 @@ class _SupabaseSectionState extends State<SupabaseSection> {
               ],
             ),
           ),
-          StatusChip(
-            active: _isOnline,
-            activeLabel: 'Connected',
-            inactiveLabel: 'Disconnected',
+          StreamBuilder<bool>(
+            stream: _health.onlineStream,
+            builder: (context, snapshot) {
+              final isOnline = snapshot.data ?? false;
+              return StatusChip(
+                active: isOnline,
+                activeLabel: 'Connected',
+                inactiveLabel: 'Disconnected',
+              );
+            },
           ),
         ],
       ),

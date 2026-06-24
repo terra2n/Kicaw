@@ -45,8 +45,8 @@ const float FAKTOR_EMISI_GRID = 0.85;
 // Threshold counter (delay loop = 50 ms):
 // - HIGH stabil 10x (0.5 detik) -> nyalakan lampu
 // - LOW  stabil 5x  (0.25 detik) -> matikan lampu
-const int THRESHOLD_MASUK  = 10;
-const int THRESHOLD_KOSONG = 5;
+const int THRESHOLD_MASUK  = 1;
+const int THRESHOLD_KOSONG = 1;
 
 // =========================================================================
 // 4. KREDENSIAL WiFi, FIREBASE & SUPABASE

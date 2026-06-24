@@ -187,7 +187,7 @@ class _HomePageState extends State<HomePage> {
               // RECENT ACTIVITY
               const FadeSlide(index: 6, child: SectionHeader(title: 'RECENT ACTIVITY')),
               FadeSlide(index: 7, child: StreamBuilder<List<ActivityLog>>(
-                stream: _supa.streamActivityLogs(limit: 50),
+                stream: _supa.streamActivityLogs(limit: 7),
                 builder: (context, snap) {
                   if (snap.hasError) return const ErrorBanner(message: 'Activity log unavailable');
                   if (!snap.hasData) return const ShimmerBlock(height: 100);
