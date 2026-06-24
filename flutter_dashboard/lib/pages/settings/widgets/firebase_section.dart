@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../theme/context_ext.dart';
 import '../../../widgets/status_chip.dart';
-import '../../../services/realtime_service.dart';
+import '../../../services/firebase_health_service.dart';
 
 class FirebaseSection extends StatefulWidget {
   const FirebaseSection({super.key});
@@ -11,11 +11,11 @@ class FirebaseSection extends StatefulWidget {
 }
 
 class _FirebaseSectionState extends State<FirebaseSection> {
-  final RealtimeService _rtdb = RealtimeService();
+  final FirebaseHealthService _health = FirebaseHealthService();
 
   @override
   void dispose() {
-    _rtdb.dispose();
+    _health.dispose();
     super.dispose();
   }
 
@@ -41,7 +41,7 @@ class _FirebaseSectionState extends State<FirebaseSection> {
             ),
           ),
           StreamBuilder<bool>(
-            stream: _rtdb.onlineStream,
+            stream: _health.onlineStream,
             builder: (context, snapshot) {
               final isOnline = snapshot.data ?? false;
               return StatusChip(
