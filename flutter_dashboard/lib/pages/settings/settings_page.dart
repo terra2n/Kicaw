@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../widgets/section_header.dart';
 import '../../services/settings_service.dart';
-import '../../services/notification_service.dart';
 import 'widgets/device_section.dart';
-import 'widgets/notification_section.dart';
 import 'widgets/firebase_section.dart';
 import 'widgets/supabase_section.dart';
 import 'widgets/about_section.dart';
@@ -11,14 +9,12 @@ import 'widgets/theme_section.dart';
 
 class SettingsPage extends StatelessWidget {
   final SettingsService service;
-  final NotificationService notifService;
   final VoidCallback onToggleTheme;
   final bool isDark;
 
   const SettingsPage({
     super.key,
     required this.service,
-    required this.notifService,
     required this.onToggleTheme,
     required this.isDark,
   });
@@ -39,9 +35,6 @@ class SettingsPage extends StatelessWidget {
               const SizedBox(height: 24),
               const SectionHeader(title: 'APPEARANCE'),
               ThemeSection(onToggle: onToggleTheme, isDark: isDark),
-              const SizedBox(height: 24),
-              const SectionHeader(title: 'NOTIFICATIONS'),
-              NotificationSection(notifService: notifService),
               const SizedBox(height: 24),
               const SectionHeader(title: 'FIREBASE'),
               const FirebaseSection(),

@@ -7,7 +7,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'firebase_options.dart';
 import 'app.dart';
 import 'services/settings_service.dart';
-import 'services/notification_service.dart';
 import 'config/supabase_config.dart';
 
 void main() async {
@@ -35,8 +34,6 @@ void main() async {
   }
 
   // Initialize Supabase
-  // Bug #5 fix: Validasi credentials sebelum init agar error lebih jelas
-  // Bug #12 fix: Ganti deprecated anonKey → publishableKey
   try {
     final supabaseUrl = SupabaseConfig.supabaseUrl;
     final supabaseKey = SupabaseConfig.supabaseAnonKey;
@@ -55,14 +52,6 @@ void main() async {
 
   final prefs = await SharedPreferences.getInstance();
   final settings = SettingsService(prefs);
-  final notif = NotificationService();
 
-  try {
-    await notif.init(settings);
-    debugPrint('Notification service initialized');
-  } catch (e) {
-    debugPrint('Notification service initialization failed: $e');
-  }
-
-  runApp(App(settingsService: settings, notificationService: notif));
+  runApp(App(settingsService: settings));
 }
