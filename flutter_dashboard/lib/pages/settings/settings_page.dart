@@ -3,9 +3,9 @@ import '../../widgets/section_header.dart';
 import '../../services/settings_service.dart';
 import '../../services/notification_service.dart';
 import 'widgets/device_section.dart';
-import 'widgets/automation_section.dart';
 import 'widgets/notification_section.dart';
 import 'widgets/firebase_section.dart';
+import 'widgets/supabase_section.dart';
 import 'widgets/about_section.dart';
 import 'widgets/theme_section.dart';
 
@@ -22,18 +22,6 @@ class SettingsPage extends StatelessWidget {
     required this.onToggleTheme,
     required this.isDark,
   });
-
-  Widget _buildSupabaseTestButton(BuildContext context) {
-    return Card(
-      child: ListTile(
-        leading: const Icon(Icons.cloud_done, color: Colors.green),
-        title: const Text('Test Supabase Connection'),
-        subtitle: const Text('Verify database connectivity'),
-        trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-        onTap: () => Navigator.pushNamed(context, '/supabase-test'),
-      ),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -52,9 +40,6 @@ class SettingsPage extends StatelessWidget {
               const SectionHeader(title: 'APPEARANCE'),
               ThemeSection(onToggle: onToggleTheme, isDark: isDark),
               const SizedBox(height: 24),
-              const SectionHeader(title: 'AUTOMATION'),
-              AutomationSection(service: service),
-              const SizedBox(height: 24),
               const SectionHeader(title: 'NOTIFICATIONS'),
               NotificationSection(notifService: notifService),
               const SizedBox(height: 24),
@@ -62,7 +47,7 @@ class SettingsPage extends StatelessWidget {
               const FirebaseSection(),
               const SizedBox(height: 24),
               const SectionHeader(title: 'SUPABASE'),
-              _buildSupabaseTestButton(context),
+              const SupabaseSection(),
               const SizedBox(height: 24),
               const SectionHeader(title: 'ABOUT'),
               const AboutSection(),

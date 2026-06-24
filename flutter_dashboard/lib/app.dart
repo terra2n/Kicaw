@@ -3,8 +3,7 @@ import 'pages/home/home_page.dart';
 import 'pages/statistics/statistics_page.dart';
 import 'pages/carbon/carbon_page.dart';
 import 'pages/settings/settings_page.dart';
-import 'pages/radar/radar_page.dart';
-import 'pages/supabase_test_page.dart';
+import 'pages/settings/radar_config_page.dart';
 import 'services/settings_service.dart';
 import 'services/notification_service.dart';
 import 'theme/app_theme.dart';
@@ -56,8 +55,7 @@ class _AppState extends State<App> {
       themeMode: _themeMode,
       debugShowCheckedModeBanner: false,
       routes: {
-        '/radar': (context) => const RadarPage(),
-        '/supabase-test': (context) => const SupabaseTestPage(),
+        '/radar-config': (context) => const RadarConfigPage(),
       },
       home: Scaffold(
         body: IndexedStack(

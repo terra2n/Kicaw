@@ -23,7 +23,7 @@ dependencies:
   supabase_flutter: ^2.3.0
   # Environment variables
   flutter_dotenv: ^5.1.0
-  flutter_blue_plus: ^2.3.9
+  url_launcher: ^6.2.2
 
 dev_dependencies:
   flutter_test:

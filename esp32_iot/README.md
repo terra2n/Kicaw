@@ -303,21 +303,13 @@ Update Firebase: occupied = false
 Calculate energy & CO2 emission
 ```
 
-### 2. Firebase Live Config
+### 2. Firebase Commands & Test Mode
 
-The firmware listens to `/radar/gate_moving` and `/radar/gate_stationary` for real-time sensitivity adjustments from the Flutter dashboard.
+The firmware listens to Firebase command path (`ruangan_01/radar_config/command`) for:
+- `set_lampu`: Manual lamp ON/OFF toggle
+- `test_mode`: 3-second lamp toggle loop (overrides radar presence detection)
 
-**Example:**
-```json
-{
-  "radar": {
-    "gate_moving": 75,       // Set moving sensitivity to 75%
-    "gate_stationary": 60    // Set stationary sensitivity to 60%
-  }
-}
-```
-
-The ESP32 will automatically apply these values to the HLK-LD2410C via UART.
+**Note:** Radar UART parameter configuration (gate sensitivity, max distance, engineering mode) is **disabled** in this firmware. Presence detection uses only the digital OUT signal (GPIO14). To adjust radar parameters, use the **HLKRadarTool** app from Play Store while the radar is not connected to ESP32.
 
 ### 3. Energy Calculation
 
@@ -329,8 +321,7 @@ co2Delta_mg = energyDelta_Wh × FAKTOR_EMISI_GRID
 ### 4. Recent Improvements & Optimizations
 
 * **Non-Blocking Supabase Reconnection:** Previously, if Supabase failed to connect, the main loop would block for 5 seconds on every iteration. We added a non-blocking 30-second retry timer, allowing the radar occupancy sensor to remain highly responsive even during backend connectivity issues.
-* **ArduinoJson Config & Parsing:** Replaced legacy unsafe string parsing (`cmdParseIntParam` substring indexing) with robust JSON deserialization via `ArduinoJson` to ensure configuration commands are parsed reliably.
-* **Engineering Data Payload Optimization:** Active engineering mode transmits 22 variables. Instead of triggering individual network requests for each variable (which caused socket exhaustion and flooding), the firmware now serializes all variables into a single JSON object and updates the database in a single transaction.
+* **Radar Config via HLKRadarTool:** Removed in-app radar parameter configuration (UART BLE). Radar settings are now configured via the official **HLKRadarTool** app from Play Store.
 
 ## 🛠️ Troubleshooting
 

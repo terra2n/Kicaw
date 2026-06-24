@@ -8,7 +8,7 @@ Flutter dashboard application for real-time monitoring of Smart Room environment
 - **Real-time Monitoring**: Live eCO2, temperature, humidity, and radar occupancy data.
 - **Statistics & Analytics**: Historical data visualization with interactive charts.
 - **Carbon Footprint**: Track and analyze CO2 emissions saved/prevented over time based on actual lamp OFF duration.
-- **Radar Detection**: Human presence detection with configurable gate sensitivity.
+- **Radar Detection**: Human presence detection via ESP32 digital OUT (GPIO14). Radar parameter configuration redirected to **HLKRadarTool** app from Play Store.
 - **Push Notifications**: Customizable alerts for threshold breaches and token pendaftaran securely stored in Firestore.
 - **Dark/Light Theme**: Adaptive UI with Material Design 3.
 - **Offline Support**: Local data caching with SharedPreferences.
@@ -27,8 +27,7 @@ lib/
 │   ├── home/             # Dashboard overview
 │   ├── statistics/       # Historical data charts
 │   ├── carbon/           # Carbon footprint tracking
-│   ├── radar/            # Radar sensor controls
-│   └── settings/         # App configuration
+│   └── settings/         # App config + radar config page
 ├── widgets/              # Shared UI components
 └── theme/                # App-wide styling
 ```
@@ -126,6 +125,7 @@ Configure alert thresholds in **Settings** page:
 | `shared_preferences` | Local settings cache |
 | `firebase_messaging` | Push notifications |
 | `flutter_local_notifications` | Local alerts |
+| `url_launcher` | Open external apps (Play Store)
 
 ## 🎨 Pages Overview
 
@@ -138,11 +138,8 @@ Historical data visualization with date range filters and trend analysis.
 ### Carbon Page
 Carbon footprint tracking with daily/weekly/monthly breakdowns.
 
-### Radar Page
-Occupancy detection controls with adjustable gate sensitivity for moving and stationary targets.
-
 ### Settings Page
-App configuration including notification thresholds, theme selection, and device info.
+App configuration including notification thresholds, theme selection, device info, and radar config redirect to HLKRadarTool app.
 
 ## 🛠️ Development
 

@@ -59,8 +59,7 @@ Prototipe otomatisasi lampu ruangan berbasis **ESP32** dengan sensor radar **HLK
 │   │   │   ├── home/          # Dashboard utama real-time
 │   │   │   ├── statistics/    # Data historis & grafik
 │   │   │   ├── carbon/        # Tracking emisi CO2
-│   │   │   ├── radar/         # Kontrol & visualisasi radar
-│   │   │   └── settings/      # Konfigurasi aplikasi
+│   │   │   └── settings/      # Konfigurasi aplikasi + radar config page
 │   │   ├── services/          # Business logic & integrasi database
 │   │   ├── widgets/           # Shared UI components
 │   │   └── theme/             # Tema Material Design 3
@@ -129,7 +128,7 @@ Prototipe otomatisasi lampu ruangan berbasis **ESP32** dengan sensor radar **HLK
 Sistem menggunakan **threshold counter** dengan delay *loop* 50ms:
 - **HIGH stabil ≥10x** (~0.5 detik) → relay ON → lampu menyala
 - **LOW stabil ≥20x** (~1.0 detik) → relay OFF → lampu mati
-- **Gate 0** = deteksi radius < 75 cm (bisa dikonfigurasi via Firebase)
+- **Gate 0** = deteksi radius < 75 cm (konfigurasi parameter radar via **HLKRadarTool** dari Play Store)
 
 ---
 
@@ -289,8 +288,7 @@ flutter run
 | **🏠 Home** | Status ruangan real-time, indikator motion, energi, aktivitas terbaru | Firebase RTDB + Supabase |
 | **📊 Statistics** | Grafik 30 hari, total all-time, target bulanan, best day card | Firestore (daily/monthly logs) |
 | **🌿 Carbon** | CO₂ tracking, real-world equivalents (pohon, mobil, cas HP) | Firebase RTDB + CarbonService |
-| **📡 Radar** | Visualisasi gate, sensitivitas per gate, engineering mode | Firebase RTDB (radar_config) |
-| **⚙️ Settings** | Tema, notifikasi, otomasi, device info | SharedPreferences + Firebase |
+| **⚙️ Settings** | Tema, notifikasi, device info, link konfigurasi radar | SharedPreferences + Firebase + Supabase |
 
 ---
 
