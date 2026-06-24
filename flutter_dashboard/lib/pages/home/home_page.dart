@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import '../../widgets/section_header.dart';
 import '../../services/supabase_service.dart';
 import '../../services/realtime_service.dart';
-import '../../services/radar_config_service.dart';
 import '../../models/supabase/room_status.dart' as supa;
 import '../../models/supabase/daily_summary.dart';
 import '../../models/supabase/activity_log.dart';
@@ -26,7 +25,6 @@ class _HomePageState extends State<HomePage> {
   final SupabaseService _supa = SupabaseService();
   // [FLU-H1 fix] RealtimeService instance disimpan agar bisa di-dispose
   final RealtimeService _rtdb = RealtimeService();
-  final RadarConfigService _radarCmd = RadarConfigService();
 
   // Bug #10 fix: Future diinisialisasi sekali di initState, bukan tiap build()
   late Future<List<DailySummary>> _weeklyFuture;
@@ -34,8 +32,6 @@ class _HomePageState extends State<HomePage> {
   // [FLU-H6 fix] Stream dibuat sekali dan di-share ke semua StreamBuilder
   // Sebelumnya: 3 StreamBuilder masing-masing membuka koneksi Supabase terpisah
   late Stream<supa.RoomStatus?> _roomStatusStream;
-
-  bool _testMode = false;
 
   @override
   void initState() {
@@ -147,78 +143,11 @@ class _HomePageState extends State<HomePage> {
 
               const SizedBox(height: 16),
 
-              // LAMP CONTROL
-              const FadeSlide(index: 2, child: SectionHeader(title: 'LAMP CONTROL')),
-              FadeSlide(
-                index: 3,
-                child: StreamBuilder<supa.RoomStatus?>(
-                  stream: _roomStatusStream,
-                  builder: (context, snap) {
-                    final status = snap.data;
-                    final lampOn = status?.lampStatus ?? false;
-                    return Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    lampOn ? 'Lampu Menyala' : 'Lampu Mati',
-                                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    _testMode ? 'Mode Test: toggle 3 detik' : 'Kontrol manual',
-                                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            IconButton(
-                              icon: Icon(
-                                lampOn ? Icons.lightbulb : Icons.lightbulb_outline,
-                                color: lampOn ? Colors.amber : Colors.grey,
-                              ),
-                              iconSize: 32,
-                              onPressed: _testMode
-                                  ? null
-                                  : () => _radarCmd.setLampu(!lampOn),
-                            ),
-                            const SizedBox(width: 4),
-                            Switch(
-                              value: _testMode,
-                              activeColor: Colors.orange,
-                              onChanged: (val) {
-                                setState(() => _testMode = val);
-                                _radarCmd.setTestMode(val);
-                              },
-                            ),
-                            Text(
-                              'Test',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: _testMode ? Colors.orange : Colors.grey,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
-
-              const SizedBox(height: 24),
-
-              // ENERGY AUDIT
-              const FadeSlide(index: 4, child: SectionHeader(title: 'ENERGY AUDIT — TODAY')),
+              // ENERGY AUDIT — TODAY
+              const FadeSlide(index: 2, child: SectionHeader(title: 'ENERGY AUDIT — TODAY')),
               // [FLU-H4 fix] Ambil data energi langsung dari RTDB (nilai aktual ESP32)
               // Sebelumnya: co2Ppm (PPM sensor) dipakai sebagai proxy Wh — unit salah total
-              FadeSlide(index: 5, child: StreamBuilder<Map<String, dynamic>>(
+              FadeSlide(index: 3, child: StreamBuilder<Map<String, dynamic>>(
                 stream: _rtdb.energyStream,
                 builder: (context, snap) {
                   if (snap.hasError) return const ErrorBanner(message: 'Energy data unavailable');
@@ -241,8 +170,8 @@ class _HomePageState extends State<HomePage> {
               const SizedBox(height: 24),
 
               // LAST 7 DAYS
-              const FadeSlide(index: 6, child: SectionHeader(title: 'LAST 7 DAYS')),
-              FadeSlide(index: 7, child: FutureBuilder<List<DailySummary>>(
+              const FadeSlide(index: 4, child: SectionHeader(title: 'LAST 7 DAYS')),
+              FadeSlide(index: 5, child: FutureBuilder<List<DailySummary>>(
                 future: _weeklyFuture,  // Bug #10 fix: Pakai cached future, bukan buat baru tiap build
                 builder: (context, snap) {
                   if (snap.hasError) return const ErrorBanner(message: 'Chart data unavailable');
@@ -261,8 +190,8 @@ class _HomePageState extends State<HomePage> {
               const SizedBox(height: 24),
 
               // RECENT ACTIVITY
-              const FadeSlide(index: 8, child: SectionHeader(title: 'RECENT ACTIVITY')),
-              FadeSlide(index: 9, child: StreamBuilder<List<ActivityLog>>(
+              const FadeSlide(index: 6, child: SectionHeader(title: 'RECENT ACTIVITY')),
+              FadeSlide(index: 7, child: StreamBuilder<List<ActivityLog>>(
                 stream: _supa.streamActivityLogs(limit: 10),
                 builder: (context, snap) {
                   if (snap.hasError) return const ErrorBanner(message: 'Activity log unavailable');

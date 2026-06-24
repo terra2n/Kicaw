@@ -26,10 +26,6 @@ extern RealtimeDatabase Database;
 extern String getTimestamp();
 extern byte radarMaxGate;
 extern Preferences prefs;
-extern bool lampuNyala;
-extern bool testMode;
-extern const int PIN_RELAY;
-extern void pushKeFirebase();
 
 // =========================================================================
 // STATE VARIABLES
@@ -238,28 +234,6 @@ void cmdProcess(const String &command, const String &params) {
     } else {
       cmdUpdateStatus("error", "Engineering mode OFF failed");
     }
-  }
-  else if (command == "set_lampu") {
-    int nyala = cmdParseIntParam(params, "nyala", -1);
-    if (nyala == 0 || nyala == 1) {
-      testMode = false;
-      lampuNyala = (nyala == 1);
-      digitalWrite(PIN_RELAY, lampuNyala ? LOW : HIGH);
-      pushKeFirebase();
-      cmdUpdateStatus("done");
-    } else {
-      cmdUpdateStatus("error", "Invalid param: nyala must be 0 or 1");
-    }
-  }
-  else if (command == "test_mode") {
-    int aktif = cmdParseIntParam(params, "aktif", 0);
-    testMode = (aktif == 1);
-    if (testMode) {
-      lampuNyala = false;
-      digitalWrite(PIN_RELAY, HIGH);
-      pushKeFirebase();
-    }
-    cmdUpdateStatus("done");
   }
   else {
     cmdUpdateStatus("error", String("Unknown command: ") + command);

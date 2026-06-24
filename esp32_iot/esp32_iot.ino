@@ -59,8 +59,6 @@ const int THRESHOLD_KOSONG = 5;
 // =========================================================================
 bool  lampuNyala       = false;
 bool  radarTerdeteksi  = false;
-bool  testMode         = false;
-bool  prevTestMode     = false;
 unsigned long lastLampToggle = 0;
 int   hitungLow        = 0;
 int   hitungHigh       = 0;
@@ -493,41 +491,12 @@ void loop() {
 
   unsigned long sekarang = millis();
 
-  // Cek command dari Firebase (setiap 500ms)
-  if (firebaseReady) {
-    static unsigned long lastCmdCheck = 0;
-    if (sekarang - lastCmdCheck >= 500) {
-      lastCmdCheck = sekarang;
-      cmdCheckFirebase();
-    }
-  }
-
   // Engineering mode loop (setiap 1 detik)
 #ifdef USE_RADAR_UART
   if (firebaseReady) {
     cmdEngineeringLoop();
   }
 #endif
-
-  // ── TEST MODE: toggle lamp setiap 3 detik ──
-  if (testMode != prevTestMode) {
-    prevTestMode = testMode;
-    if (!testMode) {
-      hitungHigh = 0;
-      hitungLow = 0;
-    }
-  }
-  if (testMode) {
-    if (sekarang - lastLampToggle >= 3000) {
-      lastLampToggle = sekarang;
-      lampuNyala = !lampuNyala;
-      digitalWrite(PIN_RELAY, lampuNyala ? LOW : HIGH);
-      pushKeFirebase();
-    }
-    // Skip radar presence detection when in test mode
-    delay(50);
-    return;
-  }
 
   int rawRadar = digitalRead(PIN_RADAR);
 
