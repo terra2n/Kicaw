@@ -32,9 +32,14 @@ class SupabaseHealthService {
 
   Future<void> _ping() async {
     try {
-      final url = SupabaseConfig.supabaseUrl;
+      final baseUrl = SupabaseConfig.supabaseUrl;
+      final anonKey = SupabaseConfig.supabaseAnonKey;
+      final url = '$baseUrl/rest/v1/room_status?select=id&limit=1';
       final response = await http
-          .head(Uri.parse(url))
+          .head(Uri.parse(url), headers: {
+            'apikey': anonKey,
+            'Authorization': 'Bearer $anonKey',
+          })
           .timeout(const Duration(seconds: 5));
       final isOnline = response.statusCode == 200 ||
                         response.statusCode == 401;
