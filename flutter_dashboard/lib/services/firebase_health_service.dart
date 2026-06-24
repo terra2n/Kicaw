@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+import '../config/firebase_config.dart';
 
 class FirebaseHealthService {
   StreamController<bool>? _controller;
@@ -32,7 +32,7 @@ class FirebaseHealthService {
 
   Future<void> _ping() async {
     try {
-      final baseUrl = dotenv.env['FIREBASE_DATABASE_URL'] ?? '';
+      final baseUrl = FirebaseConfig.databaseUrl;
       if (baseUrl.isEmpty) {
         if (_controller != null && !_controller!.isClosed) {
           _controller!.add(false);
