@@ -88,7 +88,7 @@ class _RadarPageState extends State<RadarPage>
       }
     });
 
-    _manager.init().then((_) {
+    Future.wait([_manager.init(), _manager.bleService.init()]).then((_) {
       if (mounted) {
         setState(() {});
         if (_manager.connectionMode == 'cloud') {
@@ -352,11 +352,11 @@ class _RadarPageState extends State<RadarPage>
         color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: isBle ? Colors.blue.withOpacity(0.3) : Colors.green.withOpacity(0.3),
+          color: isBle ? Colors.blue.withValues(alpha: 0.3) : Colors.green.withValues(alpha: 0.3),
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: Colors.black.withValues(alpha: 0.04),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -393,9 +393,9 @@ class _RadarPageState extends State<RadarPage>
               Switch(
                 value: isBle,
                 activeColor: Colors.blue,
-                activeTrackColor: Colors.blue.withOpacity(0.3),
+                activeTrackColor: Colors.blue.withValues(alpha: 0.3),
                 inactiveThumbColor: Colors.green,
-                inactiveTrackColor: Colors.green.withOpacity(0.3),
+                inactiveTrackColor: Colors.green.withValues(alpha: 0.3),
                 onChanged: (val) async {
                   await _manager.setConnectionMode(val ? 'ble' : 'cloud');
                   setState(() {});
@@ -493,91 +493,126 @@ class _RadarPageState extends State<RadarPage>
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setModalState) {
+            String? scanError;
             return StreamBuilder<List<ScanResult>>(
               stream: _manager.bleService.scanForRadar(),
               builder: (context, snapshot) {
                 final results = snapshot.data ?? [];
-                return Container(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+
+                return StreamBuilder<String>(
+                  stream: _manager.bleService.scanErrorStream,
+                  builder: (context, errSnapshot) {
+                    scanError = errSnapshot.data;
+                    return Container(
+                      padding: const EdgeInsets.all(20),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Text(
-                            'Pilih Perangkat Radar',
-                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text(
+                                'Pilih Perangkat Radar',
+                                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.close),
+                                onPressed: () {
+                                  _manager.bleService.stopScan();
+                                  Navigator.pop(context);
+                                },
+                              ),
+                            ],
                           ),
-                          IconButton(
-                            icon: const Icon(Icons.close),
-                            onPressed: () {
-                              _manager.bleService.stopScan();
-                              Navigator.pop(context);
-                            },
-                          ),
+                          const SizedBox(height: 10),
+                          if (scanError != null)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 12),
+                              child: Text(
+                                scanError!,
+                                style: const TextStyle(color: Colors.redAccent, fontSize: 13),
+                                textAlign: TextAlign.center,
+                              ),
+                            ),
+                          if (results.isEmpty && scanError == null)
+                            const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 32),
+                              child: Center(
+                                child: Column(
+                                  children: [
+                                    CircularProgressIndicator(strokeWidth: 3),
+                                    SizedBox(height: 12),
+                                    Text(
+                                      'Mencari radar HLK-LD2410...',
+                                      style: TextStyle(color: Colors.grey),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            )
+                            else if (results.isNotEmpty)
+                            ConstrainedBox(
+                              constraints: const BoxConstraints(maxHeight: 250),
+                              child: ListView.builder(
+                                shrinkWrap: true,
+                                itemCount: results.length,
+                                itemBuilder: (context, idx) {
+                                  final r = results[idx];
+                                  final mac = r.device.remoteId.str;
+                                  final isLastConnected = mac == _manager.bleService.lastConnectedMac;
+                                  return ListTile(
+                                    leading: Icon(
+                                      Icons.bluetooth,
+                                      color: isLastConnected ? Colors.green : Colors.blue,
+                                    ),
+                                    title: Row(
+                                      children: [
+                                        Flexible(
+                                          child: Text(
+                                            r.device.platformName.isNotEmpty
+                                                ? r.device.platformName
+                                                : 'Unknown Device',
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                        if (isLastConnected) ...[
+                                          const SizedBox(width: 6),
+                                          Icon(Icons.check_circle,
+                                              size: 14, color: Colors.green),
+                                          const SizedBox(width: 3),
+                                          Text('Sebelumnya',
+                                              style: TextStyle(
+                                                  fontSize: 11,
+                                                  color: Colors.green)),
+                                        ],
+                                      ],
+                                    ),
+                                    subtitle: Text(mac),
+                                    trailing: Text('${r.rssi} dBm'),
+                                    onTap: () async {
+                                      Navigator.pop(context);
+                                      setState(() => _isLoading = true);
+                                      final success = await _manager.bleService.connect(r.device);
+                                      setState(() => _isLoading = false);
+                                      if (success) {
+                                        _readConfig();
+                                      } else {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          const SnackBar(
+                                            content: Text('Gagal menghubungkan atau Password salah'),
+                                            backgroundColor: Colors.redAccent,
+                                          ),
+                                        );
+                                      }
+                                    },
+                                  );
+                                },
+                              ),
+                            ),
                         ],
                       ),
-                      const SizedBox(height: 10),
-                      if (results.isEmpty)
-                        const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 32),
-                          child: Center(
-                            child: Column(
-                              children: [
-                                CircularProgressIndicator(strokeWidth: 3),
-                                SizedBox(height: 12),
-                                Text(
-                                  'Mencari radar HLK-LD2410...',
-                                  style: TextStyle(color: Colors.grey),
-                                ),
-                              ],
-                            ),
-                          ),
-                        )
-                      else
-                        ConstrainedBox(
-                          constraints: const BoxConstraints(maxHeight: 250),
-                          child: ListView.builder(
-                            shrinkWrap: true,
-                            itemCount: results.length,
-                            itemBuilder: (context, idx) {
-                              final r = results[idx];
-                              return ListTile(
-                                leading: const Icon(Icons.bluetooth, color: Colors.blue),
-                                title: Text(r.device.platformName.isNotEmpty 
-                                    ? r.device.platformName 
-                                    : 'Radar HLK-LD2410'),
-                                subtitle: Text(r.device.remoteId.str),
-                                trailing: Text('${r.rssi} dBm'),
-                                onTap: () async {
-                                  Navigator.pop(context);
-                                  setState(() => _isLoading = true);
-                                  final success = await _manager.bleService.connect(r.device);
-                                  setState(() => _isLoading = false);
-                                  if (success) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text('Terhubung ke Radar via BLE'),
-                                        backgroundColor: Colors.green,
-                                      ),
-                                    );
-                                    _readConfig();
-                                  } else {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text('Gagal menghubungkan atau Password salah'),
-                                        backgroundColor: Colors.redAccent,
-                                      ),
-                                    );
-                                  }
-                                },
-                              );
-                            },
-                          ),
-                        ),
-                    ],
-                  ),
+                    );
+                  },
                 );
               },
             );
@@ -597,8 +632,8 @@ class _RadarPageState extends State<RadarPage>
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
         color: Theme.of(context).brightness == Brightness.dark
-            ? Colors.white.withOpacity(0.06)
-            : Colors.black.withOpacity(0.04),
+            ? Colors.white.withValues(alpha: 0.06)
+            : Colors.black.withValues(alpha: 0.04),
         borderRadius: BorderRadius.circular(14),
       ),
       child: Row(
@@ -613,7 +648,7 @@ class _RadarPageState extends State<RadarPage>
                 duration: const Duration(milliseconds: 250),
                 padding: const EdgeInsets.symmetric(vertical: 12),
                 decoration: BoxDecoration(
-                  color: isSelected ? color.withOpacity(0.15) : Colors.transparent,
+                  color: isSelected ? color.withValues(alpha: 0.15) : Colors.transparent,
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Column(
@@ -672,10 +707,10 @@ class _RadarPageState extends State<RadarPage>
                   width: 32,
                   height: 32,
                   decoration: BoxDecoration(
-                    color: AppColors.primary.withOpacity(0.12),
+                    color: AppColors.primary.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: Icon(Icons.radar, color: AppColors.primary, size: 18),
+                  child: Icon(Icons.radar, color: AppColors.primary, size: 22),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
@@ -700,7 +735,7 @@ class _RadarPageState extends State<RadarPage>
               borderRadius: BorderRadius.circular(12),
               child: Container(
                 color: Theme.of(context).brightness == Brightness.dark
-                    ? Colors.black.withOpacity(0.3)
+                    ? Colors.black.withValues(alpha: 0.3)
                     : Colors.grey.shade100,
                 padding:
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -728,8 +763,8 @@ class _RadarPageState extends State<RadarPage>
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
         color: isConfigLoaded
-            ? Colors.green.withOpacity(0.12)
-            : Colors.grey.withOpacity(0.12),
+            ? Colors.green.withValues(alpha: 0.12)
+            : Colors.grey.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(20),
       ),
       child: Row(
@@ -782,7 +817,7 @@ class _RadarPageState extends State<RadarPage>
           width: 12,
           height: 12,
           decoration: BoxDecoration(
-            color: color.withOpacity(0.4),
+            color: color.withValues(alpha: 0.4),
             borderRadius: BorderRadius.circular(3),
             border: Border.all(color: color, width: 1.5),
           ),
@@ -861,7 +896,7 @@ class _RadarPageState extends State<RadarPage>
       decoration: BoxDecoration(
         color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: stat.color.withOpacity(0.2), width: 1),
+        border: Border.all(color: stat.color.withValues(alpha: 0.2), width: 1),
       ),
       child: Row(
         children: [
@@ -869,7 +904,7 @@ class _RadarPageState extends State<RadarPage>
             width: 40,
             height: 40,
             decoration: BoxDecoration(
-              color: stat.color.withOpacity(0.1),
+              color: stat.color.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Icon(stat.icon, color: stat.color, size: 20),
@@ -959,7 +994,7 @@ class _RadarPageState extends State<RadarPage>
             return Container(
               height: 24,
               decoration: BoxDecoration(
-                color: color.withOpacity(0.08),
+                color: color.withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(6),
               ),
               child: Stack(
@@ -969,7 +1004,7 @@ class _RadarPageState extends State<RadarPage>
                     widthFactor: fraction,
                     child: Container(
                       decoration: BoxDecoration(
-                        color: color.withOpacity(0.25),
+                        color: color.withValues(alpha: 0.25),
                         borderRadius: BorderRadius.circular(6),
                       ),
                       child: Center(
@@ -1012,7 +1047,7 @@ class _RadarPageState extends State<RadarPage>
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.grey.withOpacity(0.08),
+        color: Colors.grey.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
@@ -1127,7 +1162,7 @@ class _RadarPageState extends State<RadarPage>
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
               decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
+                color: color.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(6),
               ),
               child: Text(
@@ -1145,8 +1180,8 @@ class _RadarPageState extends State<RadarPage>
           data: SliderTheme.of(ctx).copyWith(
             activeTrackColor: color,
             thumbColor: color,
-            overlayColor: color.withOpacity(0.12),
-            inactiveTrackColor: color.withOpacity(0.12),
+            overlayColor: color.withValues(alpha: 0.12),
+            inactiveTrackColor: color.withValues(alpha: 0.12),
           ),
           child: Slider(
             value: value.toDouble(),
@@ -1212,7 +1247,7 @@ class _RadarPageState extends State<RadarPage>
           color: Theme.of(context).cardColor,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
-            color: AppColors.primary.withOpacity(0.15),
+            color: AppColors.primary.withValues(alpha: 0.15),
             width: 1,
           ),
         ),
@@ -1224,7 +1259,7 @@ class _RadarPageState extends State<RadarPage>
               width: 34,
               height: 34,
               decoration: BoxDecoration(
-                color: AppColors.primary.withOpacity(0.1),
+                color: AppColors.primary.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Icon(preset.icon, color: AppColors.primary, size: 18),
@@ -1323,7 +1358,7 @@ class _RadarPageState extends State<RadarPage>
               height: 40,
               decoration: BoxDecoration(
                 color: (_isEngActive ? Colors.green : Colors.grey)
-                    .withOpacity(0.12),
+                    .withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Icon(
@@ -1359,7 +1394,7 @@ class _RadarPageState extends State<RadarPage>
       margin: const EdgeInsets.only(top: 16),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: Colors.blue.withOpacity(0.2)),
+        side: BorderSide(color: Colors.blue.withValues(alpha: 0.2)),
       ),
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -1372,7 +1407,7 @@ class _RadarPageState extends State<RadarPage>
                   width: 32,
                   height: 32,
                   decoration: BoxDecoration(
-                    color: Colors.blue.withOpacity(0.1),
+                    color: Colors.blue.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: const Icon(Icons.lock_outline, color: Colors.blue, size: 18),
@@ -1481,10 +1516,10 @@ class _RadarPageState extends State<RadarPage>
 
   Widget _buildDangerZone() {
     return Card(
-      color: Colors.red.withOpacity(0.04),
+      color: Colors.red.withValues(alpha: 0.04),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: Colors.redAccent.withOpacity(0.2)),
+        side: BorderSide(color: Colors.redAccent.withValues(alpha: 0.2)),
       ),
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -1494,7 +1529,7 @@ class _RadarPageState extends State<RadarPage>
               width: 40,
               height: 40,
               decoration: BoxDecoration(
-                color: Colors.redAccent.withOpacity(0.1),
+                color: Colors.redAccent.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: const Icon(Icons.warning_amber_rounded,
@@ -1524,7 +1559,7 @@ class _RadarPageState extends State<RadarPage>
               label: const Text('Reset',
                   style: TextStyle(color: Colors.redAccent)),
               style: OutlinedButton.styleFrom(
-                side: BorderSide(color: Colors.redAccent.withOpacity(0.3)),
+                side: BorderSide(color: Colors.redAccent.withValues(alpha: 0.3)),
               ),
             ),
           ],

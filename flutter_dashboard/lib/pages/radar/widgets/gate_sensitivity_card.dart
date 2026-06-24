@@ -118,7 +118,7 @@ class _GateSensitivityCardState extends State<GateSensitivityCard> {
     return Container(
       width: 36, height: 36,
       decoration: BoxDecoration(
-        color: AppColors.primary.withOpacity(0.12),
+        color: AppColors.primary.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(10),
       ),
       child: Center(
@@ -147,7 +147,7 @@ class _GateSensitivityCardState extends State<GateSensitivityCard> {
     return Container(
       width: 32, height: 6,
       decoration: BoxDecoration(
-        color: color.withOpacity(0.2),
+        color: color.withValues(alpha: 0.2),
         borderRadius: BorderRadius.circular(3),
       ),
       child: FractionallySizedBox(
@@ -176,8 +176,8 @@ class _GateSensitivityCardState extends State<GateSensitivityCard> {
             data: SliderTheme.of(context).copyWith(
               activeTrackColor: color,
               thumbColor: color,
-              overlayColor: color.withOpacity(0.12),
-              inactiveTrackColor: color.withOpacity(0.15),
+              overlayColor: color.withValues(alpha: 0.12),
+              inactiveTrackColor: color.withValues(alpha: 0.15),
             ),
             child: Slider(
               value: value,

@@ -31,7 +31,7 @@ class RadarInfoCard extends StatelessWidget {
                 Container(
                   width: 40, height: 40,
                   decoration: BoxDecoration(
-                    color: AppColors.primary.withOpacity(0.15),
+                    color: AppColors.primary.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(Icons.radar, color: AppColors.primary, size: 22),
@@ -94,7 +94,7 @@ class RadarInfoCard extends StatelessWidget {
           SizedBox(
             width: 140,
             child: Text(label, style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.textTheme.bodySmall?.color?.withOpacity(0.7),
+              color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.7),
             )),
           ),
           Expanded(child: Text(value, style: theme.textTheme.bodyMedium)),

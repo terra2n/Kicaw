@@ -14,48 +14,90 @@ class RadarBleService {
   BluetoothCharacteristic? _writeChar;
   BluetoothCharacteristic? _notifyChar;
   StreamSubscription<List<int>>? _notifySub;
+  StreamSubscription<BluetoothConnectionState>? _connStateSub;
 
   final _rxBuffer = <int>[];
   bool _isAuthenticated = false;
   String _activePassword = 'HiLink';
+  String _lastConnectedMac = '';
 
   // Stream controllers
   final _connectionStateController = StreamController<BluetoothConnectionState>.broadcast();
   final _configController = StreamController<RadarConfig>.broadcast();
   final _engineeringController = StreamController<EngineeringData>.broadcast();
   final _commandStatusController = StreamController<String>.broadcast();
+  final _scanErrorController = StreamController<String>.broadcast();
 
   // Getters
   BluetoothDevice? get connectedDevice => _connectedDevice;
   bool get isAuthenticated => _isAuthenticated;
+  String get lastConnectedMac => _lastConnectedMac;
   Stream<BluetoothConnectionState> get connectionStateStream => _connectionStateController.stream;
   Stream<RadarConfig> get configStream => _configController.stream;
   Stream<EngineeringData> get engineeringStream => _engineeringController.stream;
   Stream<String> get commandStatusStream => _commandStatusController.stream;
+  Stream<String> get scanErrorStream => _scanErrorController.stream;
 
   // BLE UUIDs
   static const String serviceUuid = "fff0";
   static const String notifyCharUuid = "fff1";
-  static const String writeCharUuid = "writeCharUuid"; // fff2 character
+  static const String writeCharUuid = "fff2";
 
   // Password from dotenv (fallback)
   String get _fallbackPassword => dotenv.env['RADAR_BLE_PASSWORD'] ?? 'HiLink';
 
-  /// Scan for HLK-LD2410 devices
-  Stream<List<ScanResult>> scanForRadar() {
-    // Start scan
-    FlutterBluePlus.startScan(
-      timeout: const Duration(seconds: 10),
-      androidUsesFineLocation: true,
-    );
-    
-    // Filter scan results to only show devices containing 'HLK' or 'LD2410'
-    return FlutterBluePlus.scanResults.map((results) {
-      return results.where((r) {
-        final name = r.device.platformName.toUpperCase();
-        return name.contains("HLK") || name.contains("LD2410") || name.contains("RADAR");
-      }).toList();
-    });
+  /// Load persisted state (last connected MAC, etc.)
+  Future<void> init() async {
+    final prefs = await SharedPreferences.getInstance();
+    _lastConnectedMac = prefs.getString('radar_last_connected_mac') ?? '';
+  }
+
+  Future<bool> _ensureBluetoothOn() async {
+    try {
+      var state = await FlutterBluePlus.adapterState.first;
+      if (state == BluetoothAdapterState.off) {
+        await FlutterBluePlus.turnOn();
+        state = await FlutterBluePlus.adapterState.first;
+        if (state == BluetoothAdapterState.off) {
+          _scanErrorController.add("Bluetooth dalam keadaan mati. Nyalakan Bluetooth.");
+          return false;
+        }
+      }
+      return true;
+    } catch (e) {
+      _scanErrorController.add("Gagal mengecek Bluetooth: $e");
+      return false;
+    }
+  }
+
+  Stream<List<ScanResult>> scanForRadar() async* {
+    final btOn = await _ensureBluetoothOn();
+    if (!btOn) {
+      yield [];
+      return;
+    }
+
+    try {
+      await FlutterBluePlus.startScan(
+        timeout: const Duration(seconds: 10),
+        androidUsesFineLocation: true,
+      );
+
+      yield* FlutterBluePlus.scanResults.map((results) {
+        final sorted = List<ScanResult>.from(results);
+        sorted.sort((a, b) => b.rssi.compareTo(a.rssi));
+
+        if (sorted.isEmpty) {
+          _scanErrorController.add(
+            "Tidak menemukan perangkat Bluetooth. Pastikan Bluetooth menyala."
+          );
+        }
+        return sorted;
+      });
+    } catch (e) {
+      _scanErrorController.add("Gagal scan Bluetooth: $e");
+      yield [];
+    }
   }
 
   /// Stop scan
@@ -67,10 +109,10 @@ class RadarBleService {
   Future<bool> connect(BluetoothDevice device) async {
     try {
       await stopScan();
-      _connectedDevice = device;
       
-      // Listen to connection state
-      device.connectionState.listen((state) {
+      // Cancel previous connection state subscription
+      _connStateSub?.cancel();
+      _connStateSub = device.connectionState.listen((state) {
         _connectionStateController.add(state);
         if (state == BluetoothConnectionState.disconnected) {
           _cleanConnection();
@@ -81,7 +123,15 @@ class RadarBleService {
       final prefs = await SharedPreferences.getInstance();
       _activePassword = prefs.getString('radar_ble_password_override') ?? _fallbackPassword;
 
-      await device.connect(autoConnect: false, license: License.nonprofit);
+      await device.connect(autoConnect: false, license: License.nonprofit)
+          .timeout(const Duration(seconds: 10));
+      
+      // Request MTU 512 agar frame panjang (set_all_gates_sens, set_max_gate) tidak terpotong
+      try {
+        await device.requestMtu(512);
+      } catch (e) {
+        debugPrint("[BLE] Gagal request MTU 512: $e");
+      }
       
       // Discover services
       final services = await device.discoverServices();
@@ -117,22 +167,30 @@ class RadarBleService {
 
       // Enable notifications
       await _notifyChar!.setNotifyValue(true);
-      _notifySub = _notifyChar!.lastValueStream.listen(_onDataReceived);
+      _notifySub = _notifyChar!.lastValueStream.listen(_onDataReceived,
+        onError: (e) => debugPrint("[BLE] Notifikasi error: $e"),
+      );
 
       // Perform Authentication handshake
       _isAuthenticated = false;
       final authOk = await _authenticate();
       if (!authOk) {
         debugPrint("[BLE] Bluetooth authentication failed");
+        _commandStatusController.add("error: Autentikasi gagal, periksa password BLE");
         await disconnect();
         return false;
       }
 
       _isAuthenticated = true;
+      _connectedDevice = device;
+      _lastConnectedMac = device.remoteId.str;
+      await prefs.setString('radar_last_connected_mac', _lastConnectedMac);
       debugPrint("[BLE] Connected & Authenticated successfully!");
+      _commandStatusController.add("done");
       return true;
     } catch (e) {
       debugPrint("[BLE] Connection error: $e");
+      _commandStatusController.add("error: Koneksi gagal: $e");
       _cleanConnection();
       return false;
     }
@@ -147,6 +205,8 @@ class RadarBleService {
   }
 
   void _cleanConnection() {
+    _connStateSub?.cancel();
+    _connStateSub = null;
     _notifySub?.cancel();
     _notifySub = null;
     _notifyChar = null;

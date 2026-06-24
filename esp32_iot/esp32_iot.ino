@@ -360,7 +360,22 @@ void setup() {
   Serial.println("================================================");
 
 #ifdef USE_RADAR_UART
+  Serial.println("[DEBUG] === ESP32 INFO ===");
+  Serial.print("PSRAM Size: "); Serial.println(ESP.getPsramSize());
+  Serial.print("Free Heap: "); Serial.println(ESP.getFreeHeap());
+  Serial.print("Chip Model: "); Serial.println(ESP.getChipModel());
+  Serial.print("Chip Revision: "); Serial.println(ESP.getChipRevision());
+  Serial.println("[DEBUG] Initializing Radar UART...");
   radarInit();
+  delay(500);
+  Serial.println("[DEBUG] Testing UART with firmware version read...");
+  uint8_t major, minor;
+  uint32_t bugfix;
+  if (radarBacaFirmware(&major, &minor, &bugfix)) {
+    Serial.println("[DEBUG] UART BERHASIL - Radar firmware detected!");
+  } else {
+    Serial.println("[DEBUG] UART GAGAL - No response from radar");
+  }
 #endif
 
   // Buka NVS sekali di sini (namespace 'energi' untuk energi + radar_gate)

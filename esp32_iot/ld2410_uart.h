@@ -11,9 +11,9 @@
 // =========================================================================
 // PIN DEFINITION
 // =========================================================================
-#define PIN_RADAR_RX 16
-#define PIN_RADAR_TX 17
-#define UART_BAUD    256000
+#define PIN_RADAR_RX 5
+#define PIN_RADAR_TX 18
+#define UART_BAUD    115200
 
 // =========================================================================
 // FRAME COMMAND MACROS (HLK-LD2410C Protocol)
@@ -161,6 +161,28 @@ static void radarDrainBuffer(unsigned long drainMs = 150) {
 // HIGH-LEVEL FUNCTIONS
 // =========================================================================
 
+// [FIX-CONFIG-RETRY] Helper bersama: masuk config mode dengan retry 3x.
+// Dipakai oleh SEMUA fungsi yang butuh config mode (baca & tulis), supaya
+// fungsi write punya jaminan retry yang sama seperti radarBacaKonfigurasi.
+// Mengembalikan true jika radar konfirmasi config mode aktif.
+static bool radarEnterConfigMode() {
+  radarDrainBuffer(200);
+
+  uint8_t enableResp[256]; size_t enableLen = 0;
+  for (int attempt = 0; attempt < 3; attempt++) {
+    enableLen = 0;
+    if (radarRawCommand(CMD_ENABLE_CONFIG, sizeof(CMD_ENABLE_CONFIG),
+                        enableResp, sizeof(enableResp), &enableLen, 500)) {
+      delay(50); // beri waktu radar settle sebelum command berikutnya
+      return true;
+    }
+    Serial.print("[RADAR] Config mode attempt "); Serial.print(attempt + 1); Serial.println(" failed, retry...");
+    radarDrainBuffer(100);
+  }
+  Serial.println("[RADAR] Failed to enter config mode after 3 attempts");
+  return false;
+}
+
 /**
  * Baca konfigurasi lengkap radar.
  * Parse response dari command Read Config (0x61).
@@ -171,29 +193,10 @@ bool radarBacaKonfigurasi(RadarConfig *cfg) {
 
   Serial.println("[RADAR] Reading configuration...");
 
-  // [UART-FIX] Drain semua frame status yang sedang mengalir sebelum masuk config mode
-  radarDrainBuffer(200);
-
-  // Enable config mode — retry hingga 3x jika gagal
-  uint8_t enableResp[256]; size_t enableLen = 0;
-  bool configModeOk = false;
-  for (int attempt = 0; attempt < 3; attempt++) {
-    enableLen = 0;
-    if (radarRawCommand(CMD_ENABLE_CONFIG, sizeof(CMD_ENABLE_CONFIG),
-                        enableResp, sizeof(enableResp), &enableLen, 500)) {
-      configModeOk = true;
-      break;
-    }
-    Serial.print("[RADAR] Config mode attempt "); Serial.print(attempt + 1); Serial.println(" failed, retry...");
-    radarDrainBuffer(100);
-  }
-
-  if (!configModeOk) {
-    Serial.println("[RADAR] Failed to enter config mode after 3 attempts");
+  // Enable config mode — retry hingga 3x jika gagal (helper bersama)
+  if (!radarEnterConfigMode()) {
     return false;
   }
-
-  delay(50);
 
   // Send read config command
   uint8_t readResp[256]; size_t readLen = 0;
@@ -273,13 +276,10 @@ bool radarSetMaxGate(uint8_t movingGate, uint8_t stationaryGate,
     0x04, 0x03, 0x02, 0x01
   };
 
-  // [UART-FIX] Drain sebelum masuk config mode
-  radarDrainBuffer(150);
-
-  uint8_t enableResp[256]; size_t enableLen = 0;
-  radarRawCommand(CMD_ENABLE_CONFIG, sizeof(CMD_ENABLE_CONFIG),
-                  enableResp, sizeof(enableResp), &enableLen, 500);
-  delay(50);
+  // [FIX-CONFIG-RETRY] Masuk config mode dengan retry 3x + verifikasi (sama seperti baca)
+  if (!radarEnterConfigMode()) {
+    return false;
+  }
 
   uint8_t writeResp[256]; size_t writeLen = 0;
   bool ok = radarRawCommand(cmd, sizeof(cmd), writeResp, sizeof(writeResp), &writeLen, 800);
@@ -317,13 +317,10 @@ bool radarSetGateSensitivitas(uint8_t gate, uint8_t movingSens,
     0x04, 0x03, 0x02, 0x01
   };
 
-  // [UART-FIX] Drain sebelum masuk config mode
-  radarDrainBuffer(150);
-
-  uint8_t enableResp[256]; size_t enableLen = 0;
-  radarRawCommand(CMD_ENABLE_CONFIG, sizeof(CMD_ENABLE_CONFIG),
-                  enableResp, sizeof(enableResp), &enableLen, 500);
-  delay(50);
+  // [FIX-CONFIG-RETRY] Masuk config mode dengan retry 3x + verifikasi (sama seperti baca)
+  if (!radarEnterConfigMode()) {
+    return false;
+  }
 
   uint8_t writeResp[256]; size_t writeLen = 0;
   bool ok = radarRawCommand(cmd, sizeof(cmd), writeResp, sizeof(writeResp), &writeLen, 800);
@@ -365,13 +362,10 @@ bool radarSetSemuaGateSensitivitas(const uint8_t movingSens[9],
 
   cmd[idx++] = 0x04; cmd[idx++] = 0x03; cmd[idx++] = 0x02; cmd[idx++] = 0x01;
 
-  // [UART-FIX] Drain sebelum masuk config mode
-  radarDrainBuffer(150);
-
-  uint8_t enableResp[256]; size_t enableLen = 0;
-  radarRawCommand(CMD_ENABLE_CONFIG, sizeof(CMD_ENABLE_CONFIG),
-                  enableResp, sizeof(enableResp), &enableLen, 500);
-  delay(100);
+  // [FIX-CONFIG-RETRY] Masuk config mode dengan retry 3x + verifikasi (sama seperti baca)
+  if (!radarEnterConfigMode()) {
+    return false;
+  }
 
   uint8_t writeResp[256]; size_t writeLen = 0;
   bool ok = radarRawCommand(cmd, idx, writeResp, sizeof(writeResp), &writeLen, 800);
@@ -393,11 +387,11 @@ bool radarSetSemuaGateSensitivitas(const uint8_t movingSens[9],
 bool radarBacaFirmware(uint8_t *major, uint8_t *minor, uint32_t *bugfix) {
   Serial.println("[RADAR] Reading firmware version...");
 
-  // [ESP-H3 fix] Masuk config mode dulu — wajib per protokol LD2410
-  uint8_t enableResp[256]; size_t enableLen = 0;
-  radarRawCommand(CMD_ENABLE_CONFIG, sizeof(CMD_ENABLE_CONFIG),
-                  enableResp, sizeof(enableResp), &enableLen, 300);
-  delay(100);
+  // [FIX-CONFIG-RETRY] [ESP-H3 fix] Masuk config mode dulu — wajib per protokol LD2410
+  if (!radarEnterConfigMode()) {
+    Serial.println("[RADAR] Failed to read firmware");
+    return false;
+  }
 
   uint8_t resp[256]; size_t respLen = 0;
   bool ok = radarRawCommand(CMD_READ_FIRMWARE, sizeof(CMD_READ_FIRMWARE),

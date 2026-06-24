@@ -66,7 +66,7 @@ class _RadarPainter extends CustomPainter {
 
     // Draw background grid arcs
     final gridPaint = Paint()
-      ..color = Colors.grey.withOpacity(0.15)
+      ..color = Colors.grey.withValues(alpha: 0.15)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1;
 
@@ -76,7 +76,7 @@ class _RadarPainter extends CustomPainter {
         Rect.fromCircle(center: center, radius: radius),
         startAngle,
         sweepAngle,
-        false,
+        true,
         gridPaint,
       );
     }
@@ -104,20 +104,20 @@ class _RadarPainter extends CustomPainter {
         final outerR = gateWidth * (gate + 1);
 
         final paint = Paint()
-          ..color = Colors.orangeAccent.withOpacity(0.15 + sens * 0.35)
+          ..color = Colors.orangeAccent.withValues(alpha: 0.15 + sens * 0.35)
           ..style = PaintingStyle.fill;
 
         canvas.drawArc(
           Rect.fromCircle(center: center, radius: outerR),
           startAngle,
           sweepAngle,
-          false,
+          true,
           paint,
         );
 
         // Draw border for active gates
         final borderPaint = Paint()
-          ..color = Colors.orangeAccent.withOpacity(0.5 + sens * 0.5)
+          ..color = Colors.orangeAccent.withValues(alpha: 0.5 + sens * 0.5)
           ..style = PaintingStyle.stroke
           ..strokeWidth = 1.5;
 
@@ -144,19 +144,19 @@ class _RadarPainter extends CustomPainter {
         final outerR = gateWidth * (gate + 1);
 
         final paint = Paint()
-          ..color = AppColors.primary.withOpacity(0.15 + sens * 0.35)
+          ..color = AppColors.primary.withValues(alpha: 0.15 + sens * 0.35)
           ..style = PaintingStyle.fill;
 
         canvas.drawArc(
           Rect.fromCircle(center: center, radius: outerR),
           startAngle,
           sweepAngle,
-          false,
+          true,
           paint,
         );
 
         final borderPaint = Paint()
-          ..color = AppColors.primary.withOpacity(0.5 + sens * 0.5)
+          ..color = AppColors.primary.withValues(alpha: 0.5 + sens * 0.5)
           ..style = PaintingStyle.stroke
           ..strokeWidth = 1.5;
 
@@ -178,7 +178,7 @@ class _RadarPainter extends CustomPainter {
 
     // Glow effect
     final glowPaint = Paint()
-      ..color = AppColors.primary.withOpacity(0.3)
+      ..color = AppColors.primary.withValues(alpha: 0.3)
       ..style = PaintingStyle.fill;
     canvas.drawCircle(center, 12, glowPaint);
 
