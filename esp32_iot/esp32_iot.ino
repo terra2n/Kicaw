@@ -1,4 +1,13 @@
 #include <Arduino.h>
+
+// =========================================================================
+// FITUR: JIKA UART RADAR BERMASALAH (ATAU BELUM DIHUBUNGKAN TX/RX-NYA),
+// SEHINGGA MUNCUL ERROR [UART] No response from radar, ANDA BISA MENJADIKAN
+// BARIS DI BAWAH SEBAGAI KOMENTAR (DENGAN MENAMBAHKAN // DI DEPANNYA).
+// JIKA DI-NONAKTIFKAN, ESP32 HANYA AKAN MEMBACA GERAKAN LEWAT PIN DIGITAL OUT (GPIO 14).
+// =========================================================================
+#define USE_RADAR_UART
+#define ENABLE_USER_AUTH
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <esp_task_wdt.h>
@@ -70,6 +79,7 @@ const unsigned long NVS_SAVE_INTERVAL_MS = 60000;
 // =========================================================================
 bool firebaseReady = false;
 bool supabaseReady = false;
+bool initialConfigPushed = false;  // One-time radar config push after Firebase ready
 unsigned long lastWiFiRetry = 0;
 const unsigned long WIFI_RETRY_INTERVAL_MS = 15000;
 unsigned long wifiRetryInterval = WIFI_RETRY_INTERVAL_MS;
@@ -78,7 +88,7 @@ unsigned long wifiConnectStart = 0;
 
 enum WiFiState { WIFI_IDLE, WIFI_CONNECTING, WIFI_CONNECTED, WIFI_FAILED };
 WiFiState wifiState = WIFI_IDLE;
-NoAuth noAuth;
+firebase_ns::UserAuth userAuth(API_KEY, FIREBASE_AUTH_EMAIL, FIREBASE_AUTH_PASSWORD);
 FirebaseApp app;
 WiFiClientSecure ssl_client;
 using AsyncClient = AsyncClientClass;
@@ -295,14 +305,13 @@ bool initFirebaseServices() {
   ssl_client.setConnectionTimeout(1000);
   ssl_client.setHandshakeTimeout(5);
 
-  initializeApp(async_client, app, getAuth(noAuth));
+  initializeApp(async_client, app, getAuth(userAuth));
   app.getApp<RealtimeDatabase>(Database);
   Database.url(DATABASE_URL);
 
   Serial.println("Berhasil terhubung ke Firebase!");
   Serial.println("------------------------------------------------");
 
-  setupFirebaseCommands();
   pushKeFirebase();
   firebaseReady = true;
   return true;
@@ -350,15 +359,19 @@ void setup() {
   Serial.println("  ESP32 + HLK-LD2410C + Firebase");
   Serial.println("================================================");
 
+#ifdef USE_RADAR_UART
   radarInit();
+#endif
 
   // Buka NVS sekali di sini (namespace 'energi' untuk energi + radar_gate)
   prefs.begin("energi");
 
+#ifdef USE_RADAR_UART
   // Load gate radar dari NVS (default = BATAS_GERBANG_DEFAULT jika belum pernah disimpan)
   radarMaxGate = (byte)prefs.getInt("radar_gate", BATAS_GERBANG_DEFAULT);
   Serial.print("[NVS] Load radar gate: "); Serial.println(radarMaxGate);
   konfigurasiJarakRadarFisik(radarMaxGate);
+#endif
 
   pinMode(PIN_RADAR, INPUT);
   pinMode(PIN_RELAY, OUTPUT);
@@ -382,28 +395,18 @@ void setup() {
   Serial.println("  Daya Lampu  : 3 Watt");
   Serial.println("------------------------------------------------");
 
+  // --- DIAG: Cek apakah ada data di UART radar ---
+  delay(100);
+  int radarAvail = RadarSerial.available();
+  int radarOut = digitalRead(PIN_RADAR);
+  Serial.print("[DIAG] RadarSerial.available="); Serial.print(radarAvail);
+  Serial.print(" | OUT(pin14)="); Serial.println(radarOut ? "HIGH" : "LOW");
+
   // --- Koneksi WiFi (non-blocking) ---
   connectWiFi();
 
   // Inisialisasi Supabase (setelah WiFi terhubung)
   initSupabase();
-}
-
-// =========================================================================
-// PROSES SETELAH FIREBASE CONNECT — Setup command listener
-// =========================================================================
-void setupFirebaseCommands() {
-  if (!app.ready()) return;
-  esp_task_wdt_reset();
-  Database.set<String>(async_client, FB_CMD_PATH, "none");
-  esp_task_wdt_reset();
-  Database.set<String>(async_client, FB_CMD_STATUS, "idle");
-  esp_task_wdt_reset();
-  Database.set<String>(async_client, FB_CMD_PARAMS, "{}");
-  esp_task_wdt_reset();
-  Database.set<int64_t>(async_client, FB_RADAR_CFG "/command_ts", 0);  // [Fix #1] int64_t
-  esp_task_wdt_reset();
-  Serial.println("[CMD] Firebase command paths initialized");
 }
 
 // =========================================================================
@@ -430,6 +433,17 @@ void loop() {
     case WIFI_CONNECTED:
       if (!firebaseReady) {
         initFirebaseServices();
+      }
+      // Push radar config ke Firebase setelah Firebase siap (sekali saja)
+      if (firebaseReady && !initialConfigPushed) {
+#ifdef USE_RADAR_UART
+        RadarConfig cfg;
+        if (radarBacaKonfigurasi(&cfg)) {
+          cmdPushConfigResult(&cfg);
+          Serial.println("[RADAR] Initial config pushed to Firebase");
+        }
+#endif
+        initialConfigPushed = true;
       }
       if (!supabaseReady) {
         static unsigned long lastSupabaseRetry = 0;
@@ -467,9 +481,11 @@ void loop() {
   }
 
   // Engineering mode loop (setiap 1 detik)
+#ifdef USE_RADAR_UART
   if (firebaseReady) {
     cmdEngineeringLoop();
   }
+#endif
 
   int rawRadar = digitalRead(PIN_RADAR);
 

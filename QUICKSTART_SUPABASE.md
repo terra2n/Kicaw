@@ -60,6 +60,13 @@ Setup Smart Room dashboard dengan **Firebase** (real-time) + **Supabase** (histo
    - `sensor_logs`
    - `daily_summaries`
    - `activity_logs`
+6. **(Opsional) Seeding Data**:
+   Untuk mengisi data historis 30 hari terakhir agar grafik statistika langsung tampil cantik, jalankan perintah ini di terminal (apabila CLI sudah ditautkan):
+   ```bash
+   supabase db query --linked --file supabase/seed.sql
+   ```
+   Atau salin isi dari `supabase/seed.sql` ke SQL Editor di dashboard lalu klik **Run**.
+
 
 ### Step 4: Wiring Hardware (5 menit)
 
@@ -118,6 +125,12 @@ cp .env.example .env
 nano .env   # isi SUPABASE_URL & SUPABASE_ANON_KEY
 flutter pub get
 flutter run
+```
+
+**Optional: Seed Firebase Data**
+Jika ingin menyimulasikan status detak jantung ESP32 sebagai Online secara instan tanpa menyalakan hardware, jalankan perintah Firebase CLI berikut:
+```bash
+firebase database:set /ruangan_01 --data "{\"status_lampu\":false,\"status_radar\":false,\"energi_dihemat_wh\":145.28,\"co2_dicegah_mg\":123488,\"radar_distance_cm\":0,\"last_heartbeat\":$(date +%s)}" --force --project kicaw-smart-room
 ```
 
 ---

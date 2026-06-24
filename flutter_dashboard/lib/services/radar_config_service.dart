@@ -40,8 +40,8 @@ class RadarConfigService {
       {Map<String, dynamic>? params}) async {
     await _ref.child('command').set(command);
     await _ref.child('command_params').set(params ?? {});
-    await _ref.child('command_ts').set(DateTime.now().millisecondsSinceEpoch ~/ 1000);
-    await _ref.child('command_status').set('sent');
+    await _ref.child('command_ts').set(DateTime.now().millisecondsSinceEpoch);
+    // Note: ESP32 is the sole writer of command_status to avoid race conditions
   }
 
   /// Baca konfigurasi radar

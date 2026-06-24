@@ -293,15 +293,7 @@ void cmdCheckFirebase() {
   if (now - lastPoll < 500) return;
   lastPoll = now;
 
-  static bool isFirstCheck = true;
-
-  int64_t cmdTs = Database.get<int64_t>(async_client, FB_CMD_TS);  // [Fix #1] int64_t
-
-  if (isFirstCheck) {
-    lastCmdTs = cmdTs;
-    isFirstCheck = false;
-    return;
-  }
+  int64_t cmdTs = Database.get<int64_t>(async_client, FB_CMD_TS);
 
   if (cmdTs == lastCmdTs) return;
 
@@ -320,9 +312,17 @@ void cmdCheckFirebase() {
   Serial.print("[CMD] Received: ");
   Serial.println(cmd);
 
+#ifndef USE_RADAR_UART
+  cmdUpdateStatus("error", "Radar UART is disabled in ESP32 firmware");
+  if (app.ready()) {
+    Database.set<String>(async_client, FB_CMD_PATH, "none");
+  }
+  cmdProcessing = false;
+#else
   String params = Database.get<String>(async_client, FB_CMD_PARAMS);
   if (params.length() == 0) params = "{}";
   cmdProcess(cmd, params);
+#endif
 }
 
 #endif // FIREBASE_CMD_H

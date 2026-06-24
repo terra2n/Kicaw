@@ -7,6 +7,8 @@
 #include <ArduinoJson.h>
 #include <WiFiClientSecure.h>
 
+#include <time.h>
+
 class SupabaseClient {
 private:
     String supabaseUrl;
@@ -71,8 +73,6 @@ public:
         }
     }
 
-
-
     // Update room_status table (UPSERT - create or update)
     // Send only available sensors to avoid corrupting database aggregates
     bool updateRoomStatus(bool lampOn, bool motionDetected, float* temperature = nullptr, float* humidity = nullptr, int* co2ppm = nullptr) {
@@ -83,6 +83,16 @@ public:
         if (temperature != nullptr) doc["temperature_c"] = *temperature;
         if (humidity != nullptr) doc["humidity_percent"] = *humidity;
         if (co2ppm != nullptr) doc["co2_ppm"] = *co2ppm;
+
+        // Add updated_at so that online/offline timestamp is updated in Supabase
+        time_t now = time(nullptr);
+        if (now > 100000) {
+            struct tm timeinfo;
+            gmtime_r(&now, &timeinfo);
+            char buf[25];
+            strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%SZ", &timeinfo);
+            doc["updated_at"] = String(buf);
+        }
 
         String payload;
         serializeJson(doc, payload);

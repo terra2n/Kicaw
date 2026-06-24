@@ -1,6 +1,8 @@
 #ifndef LD2410_UART_H
 #define LD2410_UART_H
 
+#include <stdint.h>
+#include <stdbool.h>
 #include <Arduino.h>
 #if defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32)
 #include <esp_task_wdt.h>
@@ -71,8 +73,13 @@ static HardwareSerial RadarSerial(2);
 static void radarInit() {
   RadarSerial.begin(UART_BAUD, SERIAL_8N1, PIN_RADAR_RX, PIN_RADAR_TX);
   delay(200);
-  while (RadarSerial.available()) RadarSerial.read();
-  Serial.println("[RADAR] UART initialized (persistent)");
+  int avail = 0;
+  while (RadarSerial.available()) { RadarSerial.read(); avail++; }
+  Serial.print("[RADAR] UART started: baud="); Serial.print(UART_BAUD);
+  Serial.print(" RX="); Serial.print(PIN_RADAR_RX);
+  Serial.print(" TX="); Serial.print(PIN_RADAR_TX);
+  Serial.print(" | flushed "); Serial.print(avail);
+  Serial.println(" bytes");
 }
 
 // =========================================================================
@@ -84,6 +91,9 @@ static void radarInit() {
 static bool radarRawCommand(const uint8_t cmd[], size_t cmdLen,
                              uint8_t resp[], size_t respBufSize, size_t *respLen,
                              unsigned long timeoutMs = 500) {
+#ifndef USE_RADAR_UART
+  return false;
+#endif
   // Flush sisa data di buffer sebelum kirim command
   while (RadarSerial.available()) RadarSerial.read();
   delayMicroseconds(500);
@@ -108,9 +118,9 @@ static bool radarRawCommand(const uint8_t cmd[], size_t cmdLen,
     return false;
   }
 
-  // Tahap 2: Baca semua byte sampai inter-byte silence 50ms
+  // Tahap 2: Baca semua byte sampai inter-byte silence 200ms
   unsigned long lastByte = millis();
-  while (millis() - lastByte < 50 && *respLen < respBufSize) {
+  while (millis() - lastByte < 200 && *respLen < respBufSize) {
     if (RadarSerial.available()) {
       resp[(*respLen)++] = RadarSerial.read();
       lastByte = millis();
@@ -118,7 +128,11 @@ static bool radarRawCommand(const uint8_t cmd[], size_t cmdLen,
   }
 
   if (*respLen >= 4) {
-    Serial.print("[UART] Response "); Serial.print(*respLen); Serial.println(" bytes");
+    Serial.print("[UART] Response "); Serial.print(*respLen); Serial.println(" bytes:");
+    for (size_t i = 0; i < *respLen; i++) {
+      Serial.print(resp[i], HEX); Serial.print(" ");
+    }
+    Serial.println();
     return true;
   }
   Serial.println("[UART] Response too short");
@@ -128,6 +142,9 @@ static bool radarRawCommand(const uint8_t cmd[], size_t cmdLen,
 // [UART-FIX] Drain semua data dari buffer radar (frame status yang mengalir terus)
 // Panggil sebelum masuk config mode agar tidak ada sampah di buffer
 static void radarDrainBuffer(unsigned long drainMs = 150) {
+#ifndef USE_RADAR_UART
+  return;
+#endif
   unsigned long start = millis();
   while (millis() - start < drainMs) {
     while (RadarSerial.available()) {
@@ -437,6 +454,9 @@ bool radarSetEngineeringMode(bool enable) {
  * Panggil setiap 50-100ms di loop saat engineering mode aktif.
  */
 bool radarBacaEngData(EngData *data) {
+#ifndef USE_RADAR_UART
+  return false;
+#endif
   if (!data) return false;
   data->valid = false;
 

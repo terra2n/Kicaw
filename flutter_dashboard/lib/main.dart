@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -21,6 +22,14 @@ void main() async {
       options: DefaultFirebaseOptions.currentPlatform,
     );
     debugPrint('Firebase initialized successfully');
+
+    // Anonymous sign-in for Firebase Auth (required by database rules)
+    try {
+      await FirebaseAuth.instance.signInAnonymously();
+      debugPrint('Firebase Auth: anonymous sign-in OK');
+    } catch (e) {
+      debugPrint('Firebase Auth: anonymous sign-in failed: $e');
+    }
   } catch (e) {
     debugPrint('Firebase initialization failed: $e');
   }

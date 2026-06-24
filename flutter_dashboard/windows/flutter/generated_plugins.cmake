@@ -5,7 +5,9 @@
 list(APPEND FLUTTER_PLUGIN_LIST
   app_links
   cloud_firestore
+  firebase_auth
   firebase_core
+  flutter_blue_plus_winrt
   passkeys_windows
   url_launcher_windows
 )

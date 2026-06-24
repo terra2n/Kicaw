@@ -68,6 +68,14 @@ Panduan lengkap untuk memindahkan Smart Room dashboard dari Firebase ke Supabase
   - `daily_summaries`
   - `activity_logs`
 
+**(Opsional) Seeding Data**:
+Untuk mengisi data simulasi historis 30 hari ke database cloud Supabase, Anda dapat mengeksekusi berkas seeder menggunakan Supabase CLI:
+```bash
+supabase db query --linked --file supabase/seed.sql
+```
+Atau salin kode di `supabase/seed.sql` ke SQL Editor, lalu klik **Run**.
+
+
 ### 1.4 Dapatkan Credentials
 
 1. Klik **Project Settings** (icon gear di sidebar kiri)

@@ -1,8 +1,8 @@
 {
   "rules": {
     "ruangan_01": {
-      ".read": true,
-      ".write": true,
+      ".read": "auth.uid != null",
+      ".write": "auth.uid != null",
       ".indexOn": ["timestamp"]
     }
   }

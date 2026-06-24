@@ -1,8 +1,9 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import '../../widgets/section_header.dart';
 import '../../widgets/fade_slide.dart';
-import '../../services/radar_config_service.dart';
+import '../../services/radar_connection_manager.dart';
 import '../../models/radar_config.dart';
 import '../../theme/app_colors.dart';
 import 'widgets/gate_sensitivity_card.dart';
@@ -18,7 +19,7 @@ class RadarPage extends StatefulWidget {
 
 class _RadarPageState extends State<RadarPage>
     with SingleTickerProviderStateMixin {
-  final RadarConfigService _service = RadarConfigService();
+  final RadarConnectionManager _manager = RadarConnectionManager();
   StreamSubscription<RadarConfig>? _configSub;
   StreamSubscription<EngineeringData>? _engSub;
   StreamSubscription<String>? _cmdStatusSub;
@@ -33,6 +34,7 @@ class _RadarPageState extends State<RadarPage>
   EngineeringData _engData = EngineeringData.empty;
   bool _isLoading = false;
   bool _isEngActive = false;
+  String _pendingEngCommand = '';
 
   static const _tabLabels = ['All', 'Moving', 'Stationary'];
 
@@ -44,20 +46,25 @@ class _RadarPageState extends State<RadarPage>
       if (mounted) setState(() {});
     });
 
-    _configSub = _service.configStream.listen((cfg) {
-      if (mounted) setState(() => _config = cfg);
+    _configSub = _manager.configStream.listen((cfg) {
+      if (mounted) setState(() {
+        _config = cfg;
+        _isLoading = false;
+      });
     });
-    _engSub = _service.engineeringStream.listen((data) {
+    _engSub = _manager.engineeringStream.listen((data) {
       if (mounted) setState(() => _engData = data);
     });
-    _cmdStatusSub = _service.commandStatusStream.listen((status) {
+    _cmdStatusSub = _manager.commandStatusStream.listen((status) {
       if (!mounted) return;
       if (status == 'done') {
-        _loadingTimeout?.cancel();  // Bug #11 fix: Cancel timeout jika berhasil
-        setState(() => _isLoading = false);
-        // Sync engineering state berdasarkan command terakhir
-        if (lastCommand == 'engineering_on') setState(() => _isEngActive = true);
-        if (lastCommand == 'engineering_off') setState(() => _isEngActive = false);
+        _loadingTimeout?.cancel();
+        setState(() {
+          _isLoading = false;
+          if (_pendingEngCommand == 'engineering_on') _isEngActive = true;
+          if (_pendingEngCommand == 'engineering_off') _isEngActive = false;
+          _pendingEngCommand = '';
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: const Text('Command completed'),
@@ -66,8 +73,11 @@ class _RadarPageState extends State<RadarPage>
           ),
         );
       } else if (status.startsWith('error')) {
-        _loadingTimeout?.cancel();  // Bug #11 fix: Cancel timeout jika error
-        setState(() => _isLoading = false);
+        _loadingTimeout?.cancel();
+        setState(() {
+          _isLoading = false;
+          _pendingEngCommand = '';
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Command failed: $status'),
@@ -77,7 +87,15 @@ class _RadarPageState extends State<RadarPage>
         );
       }
     });
-    _readConfig();
+
+    _manager.init().then((_) {
+      if (mounted) {
+        setState(() {});
+        if (_manager.connectionMode == 'cloud') {
+          _readConfig();
+        }
+      }
+    });
   }
 
   @override
@@ -107,7 +125,7 @@ class _RadarPageState extends State<RadarPage>
     setState(() => _isLoading = true);
     lastCommand = command;
     _startLoadingTimeout();
-    await _service.sendCommand(command, params: params);
+    await _manager.sendCommand(command, params: params);
   }
 
   Future<void> _readConfig() async {
@@ -119,12 +137,9 @@ class _RadarPageState extends State<RadarPage>
   }
 
   Future<void> _toggleEngineering() async {
-    // Toggle state hanya dikonfirmasi setelah cmdStatusSub menerima 'done'
-    if (_isEngActive) {
-      await _sendCommand('engineering_off');
-    } else {
-      await _sendCommand('engineering_on');
-    }
+    final cmd = _isEngActive ? 'engineering_off' : 'engineering_on';
+    _pendingEngCommand = cmd;
+    await _sendCommand(cmd);
   }
 
   Future<void> _applyGate(int gate, int moving, int stationary) async {
@@ -161,12 +176,7 @@ class _RadarPageState extends State<RadarPage>
       ),
     );
     if (confirm == true) {
-      await _service.factoryReset();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Factory reset sent to radar')),
-        );
-      }
+      await _sendCommand('factory_reset');
     }
   }
 
@@ -224,12 +234,7 @@ class _RadarPageState extends State<RadarPage>
             onSelected: (val) async {
               if (val == 'firmware') await _readFirmware();
               if (val == 'restart') {
-                await _service.restart();
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Restart command sent')),
-                  );
-                }
+                await _sendCommand('restart_radar');
               }
             },
             itemBuilder: (_) => const [
@@ -266,11 +271,14 @@ class _RadarPageState extends State<RadarPage>
               // ── Tab Switcher ──
               FadeSlide(index: 0, child: _buildTabSwitcher()),
 
+              // ── Connection Selector (Cloud vs BLE) ──
+              FadeSlide(index: 1, child: _buildConnectionSelector()),
+
               // ── Radar Visualization ──
-              FadeSlide(index: 1, child: _buildVisualizationCard()),
+              FadeSlide(index: 2, child: _buildVisualizationCard()),
 
               // ── Summary Stats ──
-              FadeSlide(index: 2, child: _buildSummaryStats()),
+              FadeSlide(index: 3, child: _buildSummaryStats()),
 
               // ── Content Sections ──
               Padding(
@@ -280,24 +288,24 @@ class _RadarPageState extends State<RadarPage>
                   children: [
                     const SizedBox(height: 8),
                     const FadeSlide(
-                      index: 3,
+                      index: 4,
                       child: SectionHeader(title: 'DETECTION RANGE'),
                     ),
                     FadeSlide(
-                      index: 4,
+                      index: 5,
                       child: _buildDetectionRangeCard(),
                     ),
 
                     const SizedBox(height: 24),
                     const FadeSlide(
-                      index: 5,
+                      index: 6,
                       child: SectionHeader(title: 'QUICK PRESETS'),
                     ),
-                    FadeSlide(index: 6, child: _buildPresets()),
+                    FadeSlide(index: 7, child: _buildPresets()),
 
                     const SizedBox(height: 24),
                     FadeSlide(
-                      index: 7,
+                      index: 8,
                       child: SectionHeader(
                         title: _tabController.index == 0
                             ? 'GATE SENSITIVITY'
@@ -306,20 +314,20 @@ class _RadarPageState extends State<RadarPage>
                                 : 'STATIONARY SENSITIVITY',
                       ),
                     ),
-                    FadeSlide(index: 8, child: _buildGateList()),
+                    FadeSlide(index: 9, child: _buildGateList()),
 
                     const SizedBox(height: 24),
                     const FadeSlide(
-                      index: 9,
+                      index: 10,
                       child: SectionHeader(title: 'ENGINEERING MODE'),
                     ),
                     FadeSlide(
-                      index: 10,
+                      index: 11,
                       child: _buildEngineeringSection(),
                     ),
 
                     const SizedBox(height: 16),
-                    FadeSlide(index: 11, child: _buildDangerZone()),
+                    FadeSlide(index: 12, child: _buildDangerZone()),
                     const SizedBox(height: 32),
                   ],
                 ),
@@ -329,6 +337,256 @@ class _RadarPageState extends State<RadarPage>
         ),
       ),
     );
+  }
+
+  // ── Connection Selector ──
+
+  Widget _buildConnectionSelector() {
+    final mode = _manager.connectionMode;
+    final isBle = mode == 'ble';
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: isBle ? Colors.blue.withOpacity(0.3) : Colors.green.withOpacity(0.3),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    isBle ? Icons.bluetooth : Icons.cloud_queue,
+                    color: isBle ? Colors.blue : Colors.green,
+                  ),
+                  const SizedBox(width: 12),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Mode Koneksi',
+                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                      ),
+                      Text(
+                        isBle ? 'Lokal (Bluetooth BLE)' : 'Cloud (Firebase Database)',
+                        style: const TextStyle(fontSize: 12, color: Colors.grey),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              Switch(
+                value: isBle,
+                activeColor: Colors.blue,
+                activeTrackColor: Colors.blue.withOpacity(0.3),
+                inactiveThumbColor: Colors.green,
+                inactiveTrackColor: Colors.green.withOpacity(0.3),
+                onChanged: (val) async {
+                  await _manager.setConnectionMode(val ? 'ble' : 'cloud');
+                  setState(() {});
+                  if (!val) {
+                    _readConfig();
+                  }
+                },
+              ),
+            ],
+          ),
+          if (isBle) ...[
+            const Divider(height: 24),
+            _buildBleConnectionPanel(),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBleConnectionPanel() {
+    final bleService = _manager.bleService;
+    final device = bleService.connectedDevice;
+    final isConnected = device != null && bleService.isAuthenticated;
+
+    if (isConnected) {
+      return Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.check_circle, color: Colors.green, size: 18),
+              const SizedBox(width: 8),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    device.platformName.isNotEmpty ? device.platformName : 'Radar HLK-LD2410',
+                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                  ),
+                  Text(
+                    'Remote ID: ${device.remoteId.str}',
+                    style: const TextStyle(fontSize: 11, color: Colors.grey),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          TextButton.icon(
+            icon: const Icon(Icons.bluetooth_disabled, size: 16),
+            label: const Text('Disconnect'),
+            style: TextButton.styleFrom(foregroundColor: Colors.redAccent),
+            onPressed: () async {
+              await bleService.disconnect();
+              setState(() {});
+            },
+          ),
+        ],
+      );
+    } else {
+      return Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.info_outline, color: Colors.amber, size: 18),
+              SizedBox(width: 8),
+              Text(
+                'Bluetooth belum terhubung',
+                style: TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+            ],
+          ),
+          ElevatedButton.icon(
+            icon: const Icon(Icons.search, size: 16),
+            label: const Text('Scan Radar'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blue,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: _showBleScanDialog,
+          ),
+        ],
+      );
+    }
+  }
+
+  void _showBleScanDialog() {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return StreamBuilder<List<ScanResult>>(
+              stream: _manager.bleService.scanForRadar(),
+              builder: (context, snapshot) {
+                final results = snapshot.data ?? [];
+                return Container(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            'Pilih Perangkat Radar',
+                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.close),
+                            onPressed: () {
+                              _manager.bleService.stopScan();
+                              Navigator.pop(context);
+                            },
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      if (results.isEmpty)
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 32),
+                          child: Center(
+                            child: Column(
+                              children: [
+                                CircularProgressIndicator(strokeWidth: 3),
+                                SizedBox(height: 12),
+                                Text(
+                                  'Mencari radar HLK-LD2410...',
+                                  style: TextStyle(color: Colors.grey),
+                                ),
+                              ],
+                            ),
+                          ),
+                        )
+                      else
+                        ConstrainedBox(
+                          constraints: const BoxConstraints(maxHeight: 250),
+                          child: ListView.builder(
+                            shrinkWrap: true,
+                            itemCount: results.length,
+                            itemBuilder: (context, idx) {
+                              final r = results[idx];
+                              return ListTile(
+                                leading: const Icon(Icons.bluetooth, color: Colors.blue),
+                                title: Text(r.device.platformName.isNotEmpty 
+                                    ? r.device.platformName 
+                                    : 'Radar HLK-LD2410'),
+                                subtitle: Text(r.device.remoteId.str),
+                                trailing: Text('${r.rssi} dBm'),
+                                onTap: () async {
+                                  Navigator.pop(context);
+                                  setState(() => _isLoading = true);
+                                  final success = await _manager.bleService.connect(r.device);
+                                  setState(() => _isLoading = false);
+                                  if (success) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('Terhubung ke Radar via BLE'),
+                                        backgroundColor: Colors.green,
+                                      ),
+                                    );
+                                    _readConfig();
+                                  } else {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('Gagal menghubungkan atau Password salah'),
+                                        backgroundColor: Colors.redAccent,
+                                      ),
+                                    );
+                                  }
+                                },
+                              );
+                            },
+                          ),
+                        ),
+                    ],
+                  ),
+                );
+              },
+            );
+          },
+        );
+      },
+    ).whenComplete(() {
+      _manager.bleService.stopScan();
+    });
   }
 
   // ── Tab Switcher ──
@@ -1083,6 +1341,139 @@ class _RadarPageState extends State<RadarPage>
           EngineeringMonitor(data: _engData, isActive: _isEngActive),
         ],
       ],
+    );
+  }
+
+  // BLE settings card for password management
+  Widget _buildBleSettingsCard() {
+    final isBle = _manager.connectionMode == 'ble';
+    if (!isBle) return const SizedBox.shrink();
+
+    final bleService = _manager.bleService;
+    final isConnected = bleService.connectedDevice != null && bleService.isAuthenticated;
+    if (!isConnected) return const SizedBox.shrink();
+
+    final textController = TextEditingController();
+
+    return Card(
+      margin: const EdgeInsets.only(top: 16),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: Colors.blue.withOpacity(0.2)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.lock_outline, color: Colors.blue, size: 18),
+                ),
+                const SizedBox(width: 12),
+                const Text(
+                  'Pengaturan Password Bluetooth',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'Ubah password BLE radar Anda. Password baru harus tepat 6 karakter. Radar akan otomatis di-restart setelah diubah.',
+              style: TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: textController,
+                    obscureText: true,
+                    maxLength: 6,
+                    decoration: const InputDecoration(
+                      hintText: 'Password Baru (6 char)',
+                      counterText: '',
+                      isDense: true,
+                      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                  onPressed: () async {
+                    final pwd = textController.text.trim();
+                    if (pwd.length != 6) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Password harus tepat 6 karakter!'),
+                          backgroundColor: Colors.redAccent,
+                        ),
+                      );
+                      return;
+                    }
+                    
+                    final confirm = await showDialog<bool>(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        title: const Text('Ubah Password BLE?'),
+                        content: Text('Apakah Anda yakin ingin mengubah password Bluetooth radar ke "$pwd"?\nRadar akan segera di-restart.'),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx, false),
+                            child: const Text('Batal'),
+                          ),
+                          FilledButton(
+                            onPressed: () => Navigator.pop(ctx, true),
+                            child: const Text('Ubah & Restart'),
+                          ),
+                        ],
+                      ),
+                    );
+
+                    if (confirm == true) {
+                      setState(() => _isLoading = true);
+                      final success = await _manager.changeBlePassword(pwd);
+                      setState(() => _isLoading = false);
+                      if (success) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Password berhasil diubah & Radar di-restart. Silakan hubungkan kembali.'),
+                            backgroundColor: Colors.green,
+                          ),
+                        );
+                        await _manager.bleService.disconnect();
+                        setState(() {});
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Gagal mengubah password Bluetooth'),
+                            backgroundColor: Colors.redAccent,
+                          ),
+                        );
+                      }
+                    }
+                  },
+                  child: const Text('Simpan'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 
